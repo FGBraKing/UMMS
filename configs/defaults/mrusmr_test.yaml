@@ -1,0 +1,63 @@
+---
+# ---------------------------------------------------------------------------- #
+# basic
+# ---------------------------------------------------------------------------- #
+name : 'mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_1.0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
+dataset_name : 'mrusmr'
+model_name : 'unet3d'
+test_name : 'crop969632_slide24248_nopad_noaug'
+visible_gpu : '0,1,2,3'
+# '0,''1,''2,''3,''4,''5,''6,''7'    "'0,1,2,3'"
+gpu_ids : [2, 3]
+phase_list : ['test', 'val']
+DEBUG : False
+deterministic : True
+
+local_gpu : 0
+phase : 'mrval'
+batch_size : 16
+no_augment : True
+compute_pad : False
+save_visuals : True
+# ---------------------------------------------------------------------------- #
+# weights
+# ---------------------------------------------------------------------------- #
+weight_name : '579_net_mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5.pth'
+verbose : false
+weight_dir  : './traces/checkpoints/mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
+weight_on_dir : False
+
+logs_dir : './traces/logs'
+checkpoints_dir : './traces/checkpoints'
+results_dir : './traces/results'
+
+# dataset
+dataroot :  './traces/datasets/MR-USviaFenster20_pre'
+crop_size : [96, 96, 32]
+target_size : [96, 96, 32]
+stride : [24, 24, 8]
+
+# dataloader
+num_threads : 16
+
+# ---------------------------------------------------------------------------- #
+# module
+# ---------------------------------------------------------------------------- #
+# model
+input_nc : 1
+output_nc : 1
+init_channel_number : 32
+up_interpolate : False
+conv_order : 'crb'
+
+# ---------------------------------------------------------------------------- #
+# test
+# ---------------------------------------------------------------------------- #
+eval : True
+metric_names : ['dice', 'recall', 'precision', 'specificity', 'accuracy']
+visual_names : ['segment', 'label', 'origin_volume']
+# 'origin_volume'
+
+
+# 'basic_metrics',
+...

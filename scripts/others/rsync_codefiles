@@ -1,0 +1,27 @@
+#!/bin/bash
+set -ex
+
+rsync -rvP  --delete-after  --inplace  --exclude="traces/*"    /data/fong/CODE/PycharmProject/UMMS/  lf@172.21.114.159:/home/lf/ProjectRepository/CODE/NewDoing/UMMS/
+
+rsync -rvP  --delete-after  --inplace  --exclude="traces/*"   /data/fong/CODE/PycharmProject/UMMS/  lf@172.21.141.4:/data/project_data_lf/CODE/PycharmProjects/UMMS/
+
+rsync -rvP  --delete-after  --inplace  --exclude="traces/*"   /data/fong/CODE/PycharmProject/UMMS/  lf@172.21.141.5:/home/lf/Documents/CODE/NewDoing/UMMS/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

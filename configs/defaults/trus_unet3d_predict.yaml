@@ -1,0 +1,73 @@
+---
+# ---------------------------------------------------------------------------- #
+# basic
+# ---------------------------------------------------------------------------- #
+name : 'trus_unet3d_DDP_Sybn_crop128_bs4x3_ch32_kaiming_dc_adam_1.35e-4_step_0.2_warmup_10_5e-5'
+dataset_name : 'trus'
+model_name : 'unet3d'
+predict_name : 'resize128_revert'
+visible_gpu :  '0,1,2,3'
+# !!str "'0,''1,''2,''3,''4,''5,''6,''7'"
+local_gpu : 3
+gpu_ids : [0,1]
+phase_list : ['test', 'val']
+DEBUG : False
+deterministic : True
+
+phase : 'val'
+revert : True
+save_visuals : False
+# ---------------------------------------------------------------------------- #
+# model
+# ---------------------------------------------------------------------------- #
+weight_path : './traces/checkpoints/trus_unet3d_DDP_SynBN_crop12_bs4_ch32_dc_adam_1e-4/latest_net_trus_unet3d_DDP_SynBN_crop12_bs4_ch32_dc_adam_1e-4.pth'
+verbose : false
+weight_dir : './traces/checkpoints/trus_unet3d_DDP_Sybn_crop128_bs4x3_ch32_kaiming_dc_adam_1.35e-4_step_0.2_warmup_10_5e-5'
+weight_on_dir : True
+
+
+logs_dir : './traces/logs'
+checkpoints_dir : './traces/checkpoints'
+results_dir : './traces/results'
+
+# dataset
+dataroot : './traces/datasets/prostate_daf3d_pre'
+
+custom : true
+preprocess : 'resize'
+#   'centercrop'
+#    'resize'
+#   'zoom_centercrop'
+crop_size : [128, 128, 128]
+target_size : [128, 128, 128]
+order_data: 3
+order_seg: 1
+scale : [0.8, 0.8, 0.8]
+
+
+# dataloader
+num_threads : 8
+batch_size : 1
+
+# ---------------------------------------------------------------------------- #
+# module
+# ---------------------------------------------------------------------------- #
+# model
+input_nc : 1
+output_nc : 1
+init_channel_number : 32
+up_interpolate : False
+conv_order : 'crb'
+
+
+# ---------------------------------------------------------------------------- #
+# test
+# ---------------------------------------------------------------------------- #
+eval : True
+metric_names : ['basic_metrics', 'dice', 'recall', 'precision', 'specificity', 'accuracy']
+visual_names : ['segment', 'label', 'volume']
+
+
+# 'basic_metrics',
+...
+

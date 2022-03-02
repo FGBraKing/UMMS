@@ -1,0 +1,8 @@
+traces/
+.idea/
+.ipynb_checkpoints/
+*.tar.gz
+*ipynb
+*.zip
+*.pkl
+*.pyc

@@ -1,0 +1,175 @@
+---
+#'''
+#三级配置文件----第二级
+#提供特定的数据集和模型训练时所需要的参数，并提供一些不再改变的固定参数值
+#'''
+# ×××××××××××××××××××××以下是经常需要改动的参数×××××××××××××××××××××××××××××
+# '0,''1,''2,''3'
+# ---------------------------------------------------------------------------- #
+# basic
+# ---------------------------------------------------------------------------- #
+name : 'trus_unet3d_DDP_Sybn_crop128_bs5x4_ch32_kaiming_dc_adam_2e-4_step_0.2_warmup_10_1e-4'
+# 'trus_unet3d_DDP_SynBN_gdacc2_crop128_bs3x4_ch32_kaiming_dc_adam_4e-4_step_0.25_warmup_10_1e-5'
+# 规则：数据集名+网络名+训练策略+数据集参数+网络参数+学习率策略
+# 训练策略： DDP/DP、SyncBatchNorm、use_mixed_precision、use_gradient_accumulation、APEX
+dataset_name : 'trus'
+model_name : 'unet3d'
+visible_gpu : !!str "'0,''1,''2,''3'"
+gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
+batch_size : 5
+DEBUG : False
+deterministic : True
+# ---------------------------------------------------------------------------- #
+# tricks
+# ---------------------------------------------------------------------------- #
+use_mixed_precision : False
+use_gradient_accumulation : False
+gradient_accumulation_k_step : 1
+# DDP
+DP : False
+DDP : True
+SyncBatchNorm : True
+rank : 0
+world_size : 4
+local_rank : -1
+dist_url : 'tcp://127.0.0.1:52000'
+# 'env://'
+# apex
+# Apex
+APEX : False
+APEX_opt_level : 'O1'
+# ---------------------------------------------------------------------------- #
+# dataset
+# ---------------------------------------------------------------------------- #
+# dataset
+dataroot : './traces/datasets/prostate_daf3d_pre'
+phase : 'train'
+serial_batches : true
+data_shuffle : true
+custom : true
+preprocess : 'randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+crop_size : [128, 128, 128]
+target_size : [128, 128, 128]
+#scale: [1, 1, 1]
+rot_axes: [0, 1, 2]
+mirror_axes: [0, 1, 2]
+rot_angle_spectrum: 30
+scale_range : [0.85, 1.25]
+order_data: 3
+order_seg: 1
+#bright_mu : 0.0
+#bright_sigma : 0.1
+elastic_alpha : [0., 900]
+elastic_sigma : [9., 13.]
+#shift_mu : [0., 1000]
+#shift_sigma : [10., 13.]
+g_noise_variance: [0.0, 0.1]
+
+# dataloader
+num_threads : 24
+drop_last : False
+# ---------------------------------------------------------------------------- #
+# module
+# ---------------------------------------------------------------------------- #
+# model
+input_nc : 1
+output_nc : 1
+init_channel_number : 32
+up_interpolate : False
+conv_order : 'crb'
+# 'crb'
+# loss
+loss_name: 'bdc'
+loss_alpha : 1.0
+loss_beta : 1.0
+loss_gamma : 1.0
+loss_weight : 1.0
+loss_eps : 1e-7
+loss_smooth : 0
+reduction : 'mean'
+ignore_index : ~
+# initialization
+init_type : 'kaiming'
+init_gain : 1.4142135623730951
+init_std : 0.02
+# ---------------------------------------------------------------------------- #
+# optimizer
+# ---------------------------------------------------------------------------- #
+# optimizer
+optimizer_name : 'adam'
+lr : 2e-4
+weight_decay : 0.0
+# scheduler
+lr_policy : 'step'
+warmup_lr : 1e-4
+warmup_epochs : 10
+warmup_prefix : True
+
+lr_noise : ~
+lr_noise_pct : 0.67
+lr_noise_std : 1.
+
+lr_cycle_mul : 1
+lr_cycle_decay : 0.75
+lr_cycle_limit : 5
+cooldown_epochs : 5
+
+min_lr : 1e-8
+decay_epochs : 100
+decay_rate : 0.2
+lr_k_decay : 1.0
+eval_metric : ''
+patience_epochs : 20
+# ---------------------------------------------------------------------------- #
+# model
+# ---------------------------------------------------------------------------- #
+weight_path : './traces/checkpoints/......'
+optimizer_path : ~
+continue_train : false
+verbose : false
+# additional
+suffix : ''
+epoch_start : 1
+num_epochs : 80
+isTrain : True
+
+# ---------------------------------------------------------------------------- #
+# train
+# ---------------------------------------------------------------------------- #
+# network saving and loading
+save_epoch_start : 1
+save_epoch_freq : 1
+save_iter_start : 50000
+save_iter_freq : 500
+save_by_iter : false
+# network print and showing
+display_freq : 40000
+print_freq : 1
+plot_freq : 1
+
+val_epoch_freq : 1
+test_on_train : true
+
+# visualer
+with_tensorboard : False
+save_log : True
+save_visuals : False
+save_only_latest : True
+save_visuals_frep : 1
+
+# ---------------------------------------------------------------------------- #
+# test
+# ---------------------------------------------------------------------------- #
+eval : True
+test_data_phase : 'test'
+test_preprocess : 'resize'
+# resize centercrop
+test_batchsize : 2
+test_scale : [0.8, 0.8, 0.8]
+
+
+
+
+
+
+...
