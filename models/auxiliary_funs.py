@@ -505,19 +505,23 @@ def expand_as_one_hot(input, C, ignore_index=None):
 
 
 def get_activation(activation, **kwargs):
+    if activation is None or activation == 'identity' or activation == "none":
+        return nn.Identity(**kwargs)
     if str(activation).lower() == "relu":
         return nn.ReLU(inplace=True)
     elif str(activation).lower() == "elu":
         return nn.ELU(alpha=1., inplace=True)
     elif str(activation).lower() == "leakyrelu":
-        return nn.LeakyReLU(negative_slope=1e-2, inplace=True)
+        return nn.LeakyReLU(negative_slope=2e-1, inplace=True)
     elif str(activation).lower() == "prelu":
         return nn.PReLU(num_parameters=1, init=0.25)
+    elif activation == 'lrelu':
+        return nn.LeakyReLU(0.2, inplace=True)
     elif str(activation).lower() == "relu6":
         return nn.ReLU6(inplace=True)
     elif str(activation).lower() == "rrelu":
         return nn.RReLU(inplace=True)
-    elif str(activation).lower() == "rrelu":
+    elif str(activation).lower() == "celu":
         return nn.CELU(inplace=True)
     elif str(activation).lower() == "selu":
         return nn.SELU(inplace=True)
@@ -579,6 +583,22 @@ def get_3dnorm_layer(norm_type='instance'):
     else:
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
+
+
+def get_normalization3d(num_features, norm_type='batch', **kwargs):
+    if norm_type == 'batch' or norm_type == 'bn':
+        normalization3d = nn.BatchNorm3d(num_features, **kwargs)  # , affine=True, track_running_stats=True
+    elif norm_type == 'instance' or norm_type == 'in':
+        normalization3d = nn.InstanceNorm3d(num_features, **kwargs)   # , affine=False, track_running_stats=False
+    elif norm_type == 'layer' or norm_type == 'ln':
+        normalization3d = nn.LayerNorm(**kwargs)    # m = nn.LayerNorm(input.size()[1:], elementwise_affine=False)
+    elif norm_type == 'group' or norm_type == 'gn':
+        normalization3d = nn.GroupNorm(num_channels=num_features, **kwargs)    # num_groups: int, num_channels
+    elif norm_type == 'none':
+        normalization3d = nn.Identity()
+    else:
+        raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
+    return normalization3d
 
 
 def get_init_func(init_type='gaussian', init_gain=math.sqrt(2), init_std=0.02):

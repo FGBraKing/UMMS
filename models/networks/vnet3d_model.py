@@ -74,7 +74,7 @@ class Vnet3dModel(BaseModel):
                                                 gamma=opt.loss_gamma, weight=opt.loss_weight,
                                                 **other_loss_kwargs).to(self.device)
             optimizer_kwargs = {'eps': 1e-8,
-                                'betas': (opt.beta1, 0.999)
+                                'betas': (opt.optim_beta, 0.999)
                                 }
             if 'sgd' in opt.optimizer_name.lower():
                 optimizer_kwargs.pop('betas', None)

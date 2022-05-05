@@ -8,10 +8,13 @@ from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_
 from utils.others.img_io import show_array_3d, show_volume_label, show_array_histogram, show_pired_histogram
 # from batchgenerators.augmentations.crop_and_pad_augmentations import pad_nd_image_and_seg, crop
 from utils.others.utils import Timer
+from data.utils_data import print_data_describe
 import time
+import re
+import pandas as pd
 
 
-def get_data_path(dataroot, data_phase):
+def get_data_path_old_v1(dataroot, data_phase):
 
     mr_root = os.path.join(dataroot, 'mr'+data_phase)
     us_root = os.path.join(dataroot, 'us'+data_phase)
@@ -25,10 +28,171 @@ def get_data_path(dataroot, data_phase):
     return mr_paths, us_paths
 
 
+def get_data_path_old_v2(dataroot, data_phase, fold=1):
+    mr_root = os.path.join(dataroot, 'mr')
+    us_root = os.path.join(dataroot, 'us')
+
+    if os.path.isfile(os.path.join(dataroot, f'split_{fold}.csv')):
+        split_df = pd.read_csv(os.path.join(dataroot, f'split_{fold}.csv'), keep_default_na=True)
+    else:
+        k_fold = 5
+        split_save = False
+        randomstate = np.random.RandomState(seed=1008)
+
+        patten = re.compile(r'\d+')
+        patients = os.listdir(mr_root)
+        ids = [patten.search(x).group() for x in patients]
+
+        ids = list(set(ids))
+        ids.sort()
+        randomstate.shuffle(ids)
+        fold_number = (len(ids)+k_fold-1)//k_fold
+
+        if split_save:
+            for i in range(k_fold):
+                k_fold_dict = {
+                    'test': ids[i * fold_number:(i + 1) * fold_number],
+                    'train': ids[0:i * fold_number] + ids[(i + 1) * fold_number:]
+                }
+                print(k_fold_dict)
+                k_fold_df = pd.DataFrame.from_dict(k_fold_dict, orient='index')
+                k_fold_df.T.to_csv(os.path.join(dataroot, f'split_{i}.csv'), index=False)
+
+        else:
+            kfold_dict = dict.fromkeys(range(k_fold))
+            for i in range(k_fold):
+                kfold_dict[i] = {
+                    'test': ids[i*fold_number:(i+1)*fold_number],
+                    'train': ids[0:i*fold_number] + ids[(i+1)*fold_number:]
+                }
+            split_df = pd.DataFrame.from_dict(kfold_dict)
+            # print(tt_df.T['test'])
+            split_df.T.to_csv(os.path.join(dataroot, 'split.csv'))
+        return
+
+    test_ids = split_df['test'].dropna().tolist()
+    train_ids = split_df['train'].dropna().tolist()
+    # print("P{:0>3.0f}_{}_{}.nii".format(test_ids[2], 'MR', 'image'))
+    # print("P%03d_%s_%s.nii" % (test_ids[2], 'MR', 'image'))
+
+    used_ids = test_ids if data_phase=="test" else train_ids
+
+    us_paths = [
+        {
+            'volume': os.path.join(us_root, "P{:0>3.0f}_{}_{}.nii".format(p_id, 'US', 'image')),
+            'label': os.path.join(us_root, "P{:0>3.0f}_{}_{}.nii".format(p_id, 'US', 'label'))
+        }
+        for p_id in used_ids
+    ]
+
+    mr_paths = [
+        {
+            'volume': os.path.join(mr_root, "P{:0>3.0f}_{}_{}.nii".format(p_id, 'MR', 'image')),
+            'label': os.path.join(mr_root, "P{:0>3.0f}_{}_{}.nii".format(p_id, 'MR', 'label'))
+        }
+        for p_id in used_ids
+    ]
+    #
+    # print(us_paths[0], mr_paths[0])
+    # print(os.path.isfile(us_paths[0]['volume']),
+    #       os.path.isfile(us_paths[0]['label']),
+    #       os.path.isfile(mr_paths[0]['volume']),
+    #       os.path.isfile(mr_paths[0]['label']))
+
+    return mr_paths, us_paths
+
+
+def check_data_info(dataroot):
+    pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
+
+    us_paths = [
+        {
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+        }
+        for p_id in pat_ids
+    ]
+
+    mr_paths = [
+        {
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+        }
+        for p_id in pat_ids
+    ]
+    print("{:*^120s}".format('US'))
+    print_data_describe(us_paths)
+    print("{:*^120s}".format('MR'))
+    print_data_describe(mr_paths)
+
+
+def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
+    pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
+
+    if os.path.isfile(os.path.join(dataroot, f'split_{fold}.csv')):
+        split_df = pd.read_csv(os.path.join(dataroot, f'split_{fold}.csv'), keep_default_na=True)
+    else:
+        print('creating the split files!')
+        np.random.RandomState(seed=random_seed).shuffle(pat_ids)
+
+        fold_number = (len(pat_ids)+k_fold-1)//k_fold  # 每折的数量，向上取整比如16=44440
+
+        # split_save
+        for i in range(k_fold):
+            k_fold_dict = {
+                'test': pat_ids[i * fold_number:(i + 1) * fold_number],
+                'train': pat_ids[0:i * fold_number] + pat_ids[(i + 1) * fold_number:]
+            }
+            print(k_fold_dict)
+            k_fold_df = pd.DataFrame.from_dict(k_fold_dict, orient='index')
+            k_fold_df.T.to_csv(os.path.join(dataroot, f'split_{i}.csv'), index=False)
+
+        # all save
+        kfold_dict = dict.fromkeys(range(k_fold))
+        for i in range(k_fold):
+            kfold_dict[i] = {
+                'test': pat_ids[i * fold_number:(i + 1) * fold_number],
+                'train': pat_ids[0:i * fold_number] + pat_ids[(i + 1) * fold_number:]
+            }
+        split_df = pd.DataFrame.from_dict(kfold_dict)
+        split_df.T.to_csv(os.path.join(dataroot, 'split.csv'))
+
+        print('Please rerun the program!')
+        return
+
+    test_ids = split_df['test'].dropna().tolist()
+    train_ids = split_df['train'].dropna().tolist()
+
+    used_ids = test_ids if data_phase == "test" else train_ids
+
+    us_paths = [
+        {
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+        }
+        for p_id in used_ids
+    ]
+
+    mr_paths = [
+        {
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+        }
+        for p_id in used_ids
+    ]
+
+    # print(us_paths[0], mr_paths[0])
+    # print(os.path.isfile(us_paths[0]['volume']),
+    #       os.path.isfile(us_paths[0]['label']),
+    #       os.path.isfile(mr_paths[0]['volume']),
+    #       os.path.isfile(mr_paths[0]['label']))
+    return mr_paths, us_paths
+
+
 class MrusDataset(NIIDataset):
     def __init__(self, opt):
         super(MrusDataset, self).__init__(opt)
-        self.mr_paths, self.us_paths = get_data_path(opt.dataroot, opt.phase)
+        self.mr_paths, self.us_paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
         self.mr_size = len(self.mr_paths)
         self.us_size = len(self.us_paths)
 
@@ -71,6 +235,37 @@ class MrusDataset(NIIDataset):
                 'us_volume': us_volume, 'us_volume_path': us_path['volume'],
                 'us_label': us_label, 'us_label_path': us_path['label']}
 
+    def plot_distribution(self):
+        from utils.forDebugs.data_visualizer import show_density_on_one_figure
+        if self.opt.phase == 'train':
+            bs = 16
+        else:
+            bs = 4
+
+        us_data = np.zeros((bs, 112, 128, 128), dtype=np.float32)
+        mr_data = np.zeros((bs, 112, 128, 128), dtype=np.float32)
+        us_data_i = np.zeros((112, 128, 128), dtype=np.float32)
+        mr_data_i = np.zeros((112, 128, 128), dtype=np.float32)
+
+        print(self.mr_size, self.us_size)
+
+        for i in range(bs):
+            print(self.us_paths[i]['volume'])
+            us_data_i = self.loader(self.us_paths[i]['volume'])
+            mr_data_i = self.loader(self.mr_paths[i]['volume'])
+
+            us_data[i] = us_data_i
+            mr_data[i] = mr_data_i
+            title = os.path.basename(self.us_paths[i]['volume'])[:4]
+            show_density_on_one_figure(us_data_i, mr_data_i, 'us', 'mr', title=f'{i+1}:{title}')
+        print(us_data.size, mr_data.size)
+        show_density_on_one_figure(us_data, mr_data, 'us', 'mr', title='all patient')
+
+    def print_data_describe(self, *args, **kwargs):
+        for phase, case_list in zip(['mr', 'us'], [self.mr_paths, self.us_paths]):
+            print("{:*^120s}".format(phase))
+            print_data_describe(case_list)
+
     def custom_debug(self, *args, **kwargs):
         print(f'data_size:{self.data_size}')
         for index in range(self.data_size):
@@ -91,19 +286,20 @@ class MrusDataset(NIIDataset):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='for the TRUS dataset')
+    # r'elastic_randomscale_ranomrotate_centercrop_'
+    parser = argparse.ArgumentParser(description='for the MRI and TRUS dataset')
     parser.add_argument('--dataroot', type=str,
-                        default=r'/home/lf/data_fong/CODE/PycharmProject/UMMS/traces/datasets/MR-USviaFenster20_pre')
+                        default=r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre128')
     parser.add_argument('--phase', type=str, default='train')
+    parser.add_argument('--fold', type=int, default=0)
     parser.add_argument('--seed', type=int, default=1008)
-    parser.add_argument('--preprocess', type=str, default=r'elastic_randomscale_randomcrop_ranomrotate_centercrop_'
-                                                          r'rot90_mirror_gaussianNoise_GaussianBlur_'
-                                                          r'BrightnessMultiplicative_contrast_simulate_gammatransform')
-
+    parser.add_argument('--preprocess', type=str, default='')
+    # r'rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+    # r'rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
     parser.add_argument('--serial_batches', action='store_true')
     parser.add_argument('--custom', action='store_true')
     parser.add_argument('--rot_axes', type=list, default=[1, 2], help='the rot90 axes')
-    parser.add_argument('--mirror_axes', type=list, default=[1, 2], help='the rot90 axes')
+    parser.add_argument('--mirror_axes', type=list, default=[1, 2], help='the mirror axes')
     parser.add_argument('--rot_angle_spectrum', type=int, default=25)
     parser.add_argument('--scale_range', type=list, default=[0.85, 1.25])
     parser.add_argument('--order_data', type=int, default=3)
@@ -113,7 +309,7 @@ def main():
     parser.add_argument('--elastic_sigma', type=list, default=[9., 13.])
     parser.add_argument('--g_noise_variance', type=list, default=[0.3, 0.7])
 
-    parser.add_argument('--crop_size', type=list, default=[160, 160, 16])
+    parser.add_argument('--crop_size', type=list, default=[96, 96, 80])
     opt = parser.parse_args(args=['--serial_batches', '--custom'])
     # opt.preprocess = r'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_' \
     #                  r'GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
@@ -126,7 +322,9 @@ def main():
     dataset = MrusDataset(opt)
     print(len(dataset))
     with Timer('running with custom_debug, using time:%ss'):
-        dataset.custom_debug()
+        # dataset.print_data_describe()
+        dataset.plot_distribution()
+        # dataset.custom_debug()
         # start_time = time.time()
         # for ind, test_data in enumerate(dataset):
         #     print('using time:%s' % (time.time()-start_time))
@@ -139,4 +337,5 @@ def main():
 
 if __name__ == '__main__':
     main()
-
+    # get_data_path(r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre96', 'train')
+    # check_data_info(r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre192')

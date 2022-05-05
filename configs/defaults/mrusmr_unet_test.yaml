@@ -31,24 +31,24 @@ logs_dir : './traces/logs'
 checkpoints_dir : './traces/checkpoints'
 results_dir : './traces/results'
 
-# dataset
+# ---------------------------------------------------------------------------- #
+# data
+# ---------------------------------------------------------------------------- #
 dataroot :  './traces/datasets/MR-USviaFenster20_pre'
 crop_size : [96, 96, 32]
 target_size : [96, 96, 32]
 stride : [24, 24, 8]
 
-# dataloader
 num_threads : 16
-
 # ---------------------------------------------------------------------------- #
-# module
+# network
 # ---------------------------------------------------------------------------- #
-# model
 input_nc : 1
 output_nc : 1
 init_channel_number : 32
 up_interpolate : False
 conv_order : 'crb'
+
 
 # ---------------------------------------------------------------------------- #
 # test
@@ -57,7 +57,5 @@ eval : True
 metric_names : ['dice', 'recall', 'precision', 'specificity', 'accuracy']
 visual_names : ['segment', 'label', 'origin_volume']
 # 'origin_volume'
-
-
 # 'basic_metrics',
 ...

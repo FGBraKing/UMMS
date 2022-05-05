@@ -17,7 +17,7 @@ from utils.others.distributed_utils import reduce_mean
 from utils.others.utils import print_numpy
 
 ddp_logger = logging.getLogger('ddp_logger')
-# --config_path=configs/defaults/mrusmr_train.yaml --use_config
+# --config_path=configs/defaults/mrusmr_unet_train.yaml --use_config
 
 
 def define_model(opt, device):
@@ -91,7 +91,7 @@ class UnetModel(BaseModel):
 
             self.criterionL2 = getattr(losses, 'l2_regularization')
             optimizer_kwargs = {'eps': 1e-8,
-                                'betas': (opt.beta1, 0.999)
+                                'betas': (opt.optim_beta, 0.999)
                                 }
             if 'sgd' in opt.optimizer_name.lower():
                 optimizer_kwargs.pop('betas', None)

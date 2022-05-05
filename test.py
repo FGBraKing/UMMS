@@ -31,7 +31,7 @@ def test():
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d_test.yaml', '--use_config'], save_log=False)
     # opt_dict = get_config('configs/defaults/trus_unet3d_test.yaml')
     # opt_dict = get_config('configs/defaults/promise_unet3d_test.yaml')
-    opt_dict = get_config('configs/defaults/mrusmr_test.yaml')
+    opt_dict = get_config('configs/defaults/mrusmr_unet_test.yaml')
     opt = SimpleNamespace(**opt_dict)
     opt.visible_gpu = str(opt.visible_gpu)
     print('torch.cuda.is_available:', torch.cuda.is_available(), opt.local_gpu, opt.phase, opt.visible_gpu)

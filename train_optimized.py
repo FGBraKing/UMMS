@@ -104,7 +104,7 @@ def train_ddp(args, train_fn):
 def main():
     # opt = ProjectOptions().parse(True)   # get training options
     # opt = get_opt(args=None)
-    # opt = get_opt(args=['--config_path=configs/defaults/mrusmr_train.yaml', '--use_config'])
+    # opt = get_opt(args=['--config_path=configs/defaults/mrusmr_unet_train.yaml', '--use_config'])
     opt = get_opt(args=['--config_path=configs/defaults/ummkd_train.yaml', '--use_config'])
     # opt = get_opt(args=['--config_path=configs/defaults/promise12_unet3d.yaml', '--use_config'])
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml', '--use_config'])

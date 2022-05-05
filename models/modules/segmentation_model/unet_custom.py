@@ -176,23 +176,39 @@ class UnetCustom(nn.Module):
         super(UnetCustom, self).__init__()
         f_maps = [init_channel_number*2**x for x in range(deptp + 1)]
         self.in_conv = InConv(norm_type, in_channels, f_maps[0])
-        self.encoders = nn.ModuleList([
-            EncodeBlock(norm_type, f_maps[0], f_maps[1], conv_kernel_size=(3, 3, 3), max_pool_kernel_size=(2,2,2)),
-            EncodeBlock(norm_type, f_maps[1], f_maps[2], conv_kernel_size=(3, 3, 3), max_pool_kernel_size=(2,2,2)),
-            EncodeBlock(norm_type, f_maps[2], f_maps[3], conv_kernel_size=(3, 3, 3), max_pool_kernel_size=(2,2,2)),
-            EncodeBlock(norm_type, f_maps[3], f_maps[4], conv_kernel_size=(1, 3, 3), max_pool_kernel_size=(1,2,2)),
-        ])
-        self.decoders = nn.ModuleList([
-            DecodeBlock(norm_type, f_maps[4], f_maps[3],
-                        conv_kernel_size=(1, 3, 3), deconv_kernel_size=(3,4,4), scale_factor=(1,2,2)),
-            DecodeBlock(norm_type, f_maps[3], f_maps[2],
-                        conv_kernel_size=(3, 3, 3), deconv_kernel_size=(4,4,4), scale_factor=(2,2,2)),
-            DecodeBlock(norm_type, f_maps[2], f_maps[1],
-                        conv_kernel_size=(3, 3, 3), deconv_kernel_size=(4,4,4), scale_factor=(2,2,2)),
-            DecodeBlock(norm_type, f_maps[1], f_maps[0],
-                        conv_kernel_size=(3, 3, 3), deconv_kernel_size=(4,4,4), scale_factor=(2,2,2)),
-        ])
-        self.out_conv = OutConv(f_maps[0], n_class, kernel_size=(1,1,1), activation=final_sigmoid)
+
+        self.encoders = nn.ModuleList([EncodeBlock(norm_type, f_maps[i], f_maps[i+1],
+                                                   conv_kernel_size=(3, 3, 3),
+                                                   max_pool_kernel_size=(2,2,2))
+                                       for i in range(deptp)])
+
+        # self.encoders = nn.ModuleList([
+        #     EncodeBlock(norm_type, f_maps[0], f_maps[1], conv_kernel_size=(3, 3, 3), max_pool_kernel_size=(2,2,2)),
+        #     EncodeBlock(norm_type, f_maps[1], f_maps[2], conv_kernel_size=(3, 3, 3), max_pool_kernel_size=(2,2,2)),
+        #     EncodeBlock(norm_type, f_maps[2], f_maps[3], conv_kernel_size=(3, 3, 3), max_pool_kernel_size=(2,2,2)),
+        #     EncodeBlock(norm_type, f_maps[3], f_maps[4], conv_kernel_size=(3, 3, 3), max_pool_kernel_size=(2,2,2)),
+        # ])
+
+        self.decoders = nn.ModuleList(
+            [
+                DecodeBlock(norm_type, f_maps[deptp - i], f_maps[deptp - 1 - i],
+                            conv_kernel_size=(3, 3, 3),
+                            deconv_kernel_size=(4, 4, 4),
+                            scale_factor=(2, 2, 2)) for i in range(deptp)
+            ]
+
+        )
+        # self.decoders = nn.ModuleList([
+        #     DecodeBlock(norm_type, f_maps[4], f_maps[3],
+        #                 conv_kernel_size=(3, 3, 3), deconv_kernel_size=(4,4,4), scale_factor=(2,2,2)),
+        #     DecodeBlock(norm_type, f_maps[3], f_maps[2],
+        #                 conv_kernel_size=(3, 3, 3), deconv_kernel_size=(4,4,4), scale_factor=(2,2,2)),
+        #     DecodeBlock(norm_type, f_maps[2], f_maps[1],
+        #                 conv_kernel_size=(3, 3, 3), deconv_kernel_size=(4,4,4), scale_factor=(2,2,2)),
+        #     DecodeBlock(norm_type, f_maps[1], f_maps[0],
+        #                 conv_kernel_size=(3, 3, 3), deconv_kernel_size=(4,4,4), scale_factor=(2,2,2)),
+        # ])
+        self.out_conv = OutConv(f_maps[0], n_class, kernel_size=(1, 1, 1), activation=final_sigmoid)
 
     def forward(self, x):
         encoders_features = []
@@ -222,28 +238,31 @@ if __name__ == "__main__":
     # from models.auxiliary_hookers import FeatureMapExtractor, FeatureGradientExtractor
     from models.auxiliary_funs import print_model_parm_nums, print_model_parm_flops
 
-    device = torch.device(f"cuda:{2}" if torch.cuda.is_available() else 'cpu')
+    torch.cuda.set_device('cuda:1')
+    # device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
     net = UnetCustom(norm_type='batch', in_channels=1, n_class=1, deptp=4,
-                     init_channel_number=16, final_sigmoid=True).to(device)
+                     init_channel_number=16, final_sigmoid=True).cuda()
 
-    print('---------------------------------------------------------')
-    for name, layer in net.named_modules():
-        print(name, type(layer))
+    # print('---------------------------------------------------------')
+    # for name, layer in net.named_modules():
+    #     print(name, type(layer))
     print('---------------------------------------------------------')
     for name, layer in net.named_children():
         print(name, type(layer))
+    #
+    # for k, v in net.named_parameters():
+    #     print(k, v.size())
+    #
+    #     print(v.nelement())
+    #
+    # for k, v in net.named_buffers():
+    #     print(k, v.size())
 
-    for k, v in net.named_parameters():
-        print(k, v.size())
+    # func_net = partial(net, domain='target')
 
-        print(v.nelement())
+    summary(net, input_size=(1, 80, 96, 96), batch_size=1, device='cuda')
 
-    for k, v in net.named_buffers():
-        print(k, v.size())
-
-    func_net = partial(net, domain='target')
-
-    inputs = torch.rand((4, 1, 48, 192, 192), requires_grad=True).to(device)
+    inputs = torch.rand((4, 1, 80, 96, 96), requires_grad=True).cuda()
     print_model_parm_nums(net)  # 40.15M
 
     out = net(inputs)
@@ -251,7 +270,7 @@ if __name__ == "__main__":
 
     print(net.get_L2_norm())
     # print_model_parm_flops(func_net, inputs, need_idx=False)  # 751.84G
-    # summary(func_net, input_size=(1, 128, 128, 32), batch_size=1, device='cuda')
+    # summary(func_net, input_size=(1, 112, 128, 128), batch_size=1, device='cuda')
 
 
 

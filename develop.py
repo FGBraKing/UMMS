@@ -162,7 +162,7 @@ def test_config():
 #
 #     lr_scaler = hvd.size() if not opt.use_adasum else 1
 #     opt.lr = lr_scaler * opt.lr
-#     optimizer = create_optimizer_v2(model.parameters(), opt='adam', lr=opt.lr, betas=(opt.beta1, 0.999))
+#     optimizer = create_optimizer_v2(model.parameters(), opt='adam', lr=opt.lr, betas=(opt.optim_beta, 0.999))
 #
 #     optimizer = hvd.DistributedOptimizer(optimizer,
 #                                          named_parameters=model.named_parameters(),

@@ -26,6 +26,12 @@ def tensor2im(input_image, imtype=np.uint8):
     return image_numpy.astype(imtype)
 
 
+def tensor2seg(image_tensor, imtype=np.uint8):
+    image_numpy = image_tensor[0].cpu().float().numpy()
+    image_numpy = np.transpose(image_numpy, (1, 2, 0)) * 20
+    return image_numpy.astype(imtype)
+
+
 def vgg_preprocess(batch):
     tensortype = type(batch.data)
     (r, g, b) = torch.chunk(batch, 3, dim=1)

@@ -42,7 +42,7 @@ def train():
     # opt = ProjectOptions().parse(True)   # get training options
     # opt = get_opt(args=None)
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml', '--use_config'])
-    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_train.yaml', '--use_config', '--use_current_local_rank'])
+    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_unet_train.yaml', '--use_config', '--use_current_local_rank'])
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml','--use_config', '--use_current_local_rank'])
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
@@ -51,6 +51,7 @@ def train():
     do_train(opt)
 
 
+# TODO: 1.实现训练中测试  2.保存test和predict中各自最好的10个模型。3.保存在训练集中效果最好的10个模型
 def do_train(opt):
     print('now is in do_train, if you are using DDP, please make sure that '
           'you had got (dist_backend, dist_url, world_size, rank, local_rank) ready')

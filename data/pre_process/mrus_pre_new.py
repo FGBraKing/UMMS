@@ -79,6 +79,9 @@ class MrusPre(DatasetPre):
             order = 3
             order_z = 1
 
+        if not do_separate_z:
+            old_spacing = [0.19, 0.19, 0.19]
+
         old_shape = img.shape[::-1]     # x y z
         new_shape = np.round(((np.array(old_spacing) / np.array(new_spacing)).astype(float) * old_shape)).astype(int)
 
@@ -94,14 +97,22 @@ class MrusPre(DatasetPre):
         # print(img.shape)
         # img = np.squeeze(img, axis=0)               # cxyz
 
-        out_img = resample_data_or_seg(img, new_shape, is_label, axis=axis,
-                                       order=order, do_separate_z=do_separate_z, order_z=order_z)
+        out_img = resample_data_or_seg(img, new_shape, is_label, do_separate_z=do_separate_z,
+                                       axis=axis, order=order, order_z=order_z)
 
         # out_img = np.expand_dims(out_img, axis=0)           # ncxyz
         # print(out_img.shape)
         # out_img, _ = crop(out_img, crop_size=(192, 192, 160), margins=(0, 0, 0), crop_type="center")
         # print(out_img.shape)
         # out_img = np.squeeze(out_img, axis=0)               # cxyz
+
+        if 'aim_shape' in kwargs.keys():
+            aim_shape = kwargs['aim_shape']
+            out_img = np.expand_dims(out_img, axis=0)           # ncxyz
+            print(out_img.shape)
+            out_img, _ = crop(out_img, crop_size=tuple(aim_shape), margins=(0, 0, 0), crop_type="center")
+            print(out_img.shape)
+            out_img = np.squeeze(out_img, axis=0)               # cxyz
 
         out_img = out_img[0]
 
@@ -238,6 +249,15 @@ class MrusPre(DatasetPre):
             for data, phase in zip(data_list['us'], phase_list):
                 self._process_and_save_data(data, phase, transform, save_root, modal='us', **kwargs)
 
+    def process_and_save_data_nosplit(self, save_root, transform=None, **kwargs):
+        if self.mode.lower() == 'mr':
+            self._process_and_save_data(self.case_mr, '', transform, save_root, modal='mr', **kwargs)
+        elif self.mode.lower() == 'us':
+            self._process_and_save_data(self.case_us, '', transform, save_root, modal='us', **kwargs)
+        else:
+            self._process_and_save_data(self.case_mr, '', transform, save_root, modal='mr', **kwargs)
+            self._process_and_save_data(self.case_us, '', transform, save_root, modal='us', **kwargs)
+
     def print_custom_info(self, *args, **kwargs):
         self.print_data_describe(*args, **kwargs)
 
@@ -246,8 +266,7 @@ class MrusPre(DatasetPre):
 
         for phase, case_list in zip(['us', 'mr'], [self.case_us, self.case_mr]):
             print("{:*^120s}".format(phase))
-            molecule = 10 if phase == 'mr' else 100
-            spacing_molecule = 1.0 if phase == 'mr' else 1.9
+            molecule = 10
             origin_set = set()
             direction_set = set()
             label_size_set = set()
@@ -268,7 +287,7 @@ class MrusPre(DatasetPre):
                 label, label_info = self._read_img(patient['label'])
 
                 img_info = list(img_info)
-                img_info[2] = tuple([a*spacing_molecule for a in img_info[2]])
+                img_info[2] = tuple(img_info[2])
                 img_info = tuple(img_info)
 
                 label_size = tuple(map(lambda x: x[1]-x[0], get_foreground_shape(label)))
@@ -325,10 +344,10 @@ class MrusPre(DatasetPre):
             print('min_z:{:<5.0f}, max_z:{:<5.0f}'.format(min(shape_z_set), max(shape_z_set)))
             for space in spacing_set:
                 print('spacing:', space)
-            print('min_x:{:<5.4f}mm, max_x:{:<5.4f}mm'.format(min(spacing_x_set)/molecule*10,
-                                                              max(spacing_x_set)/molecule*10))
-            print('min_z:{:<5.4f}mm, max_z:{:<5.4f}mm'.format(min(spacing_z_set)/molecule*10,
-                                                              max(spacing_z_set)/molecule*10))
+            print('min_x:{:<5.4f}mm, max_x:{:<5.4f}mm'.format(min(spacing_x_set),
+                                                              max(spacing_x_set)))
+            print('min_z:{:<5.4f}mm, max_z:{:<5.4f}mm'.format(min(spacing_z_set),
+                                                              max(spacing_z_set)))
             for phy in physical_set:
                 print('physical length:{}cm'.format(phy))
             print('min_x:{:<4.2f}cm, max_x:{:<4.2f}cm'.format(min(physical_x_set), max(physical_x_set)))
@@ -431,14 +450,16 @@ def convert_dataset_for_nnunet(data_root):
 
 
 def main():
-    dataroot = r'/home/lf/Documents/DATA/MR-USviaFenster20/'
+    dataroot = r'F:\Code\NEW_doing\UMMS\traces\datasets\MR-USviaFenster20'
     # saveroot = r'/raid/lf/PROJECT/DLForPytorch/traces/datasets/MR-USviaFenster20_pre'
 
-    saveroot = r'/home/lf/Documents/CODE/NewDoing/UMMS/traces/datasets/MR-USviaFenster20_pre_v4'
-    if not os.path.exists(saveroot):
-        os.makedirs(saveroot)
+    # saveroot = r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20_pre192'
+    # if not os.path.exists(saveroot):
+    #     os.makedirs(saveroot)
 
-    dataset = MrusPre(dataroot=dataroot, mode='mr')
+    mode = 'all'
+
+    dataset = MrusPre(dataroot=dataroot, mode=mode)
 
     # dataset.process_and_save_data(saveroot,
     #                               save_csv=True,
@@ -446,10 +467,22 @@ def main():
     #                               save_type='nii',        # _process_and_save_data
     #                               if_slim=True,          # _process_and_save_data
     #                               do_separate_z=True,    # addition_process
-    #                               new_spacing=[0.43, 0.43, 0.4],  # addition_process
-    #                               new_shape=[192, 192, 160]
+    #                               new_spacing=[1.0, 1.0, 1.0],  # addition_process
+    #                               new_shape=[84, 84, 66]
     #                               )
 
+    # dataset.process_and_save_data_nosplit(saveroot,
+    #                                       save_type='nii',        # _process_and_save_data
+    #                                       if_slim=False,          # _process_and_save_data
+    #                                       do_separate_z=mode == 'mr',     # addition_process
+    #                                       new_spacing=[0.4433, 0.4433, 0.4125],  # addition_process
+    #                                       # new_shape=[96, 96, 80],
+    #                                       aim_shape=[192, 192, 160]
+    #                                       )
+
+    # # [0.665, 0.665, 0.611]      aim_shape=[128, 128, 108]
+    # [0.886, 0.886, 0.825]      aim_shape=[96, 96, 80]
+    #  85.056, 85.056, 66
     dataset.print_custom_info()
     # convert_dataset_for_nnunet(dataroot)
 
@@ -458,5 +491,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

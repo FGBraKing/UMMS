@@ -2,17 +2,17 @@
 set -ex
 
 
-rsync -rvP  --update --ignore-existing  lf@172.21.141.5:/home/lf/Documents/CODE/NewDoing/UMMS/traces/  /data/fong/CODE/PycharmProject/UMMS/traces/
+rsync -avP  --update --ignore-existing  lf@172.21.141.5:/home/lf/Documents/CODE/NewDoing/UMMS/traces/  /data/fong/CODE/PycharmProject/UMMS/traces/
 
-rsync -rvP  --update --ignore-existing  lf@172.21.141.4:/data/project_data_lf/CODE/PycharmProjects/UMMS/traces/  /data/fong/CODE/PycharmProject/UMMS/traces/
+rsync -avP  --update --ignore-existing  lf@172.21.141.4:/data/project_data_lf/CODE/PycharmProjects/UMMS/traces/  /data/fong/CODE/PycharmProject/UMMS/traces/
 
-rsync -rvP  --update --ignore-existing  lf@172.21.114.159:/home/lf/ProjectRepository/CODE/NewDoing/UMMS/traces/  /data/fong/CODE/PycharmProject/UMMS/traces/
+rsync -avP  --update --ignore-existing  lf@172.21.114.159:/home/lf/ProjectRepository/CODE/NewDoing/UMMS/traces/  /data/fong/CODE/PycharmProject/UMMS/traces/
 
-rsync -rvP  --update --ignore-existing  /data/fong/CODE/PycharmProject/UMMS/traces/  lf@172.21.141.5:/home/lf/Documents/CODE/NewDoing/UMMS/traces/
+rsync -avP  --update --ignore-existing  /data/fong/CODE/PycharmProject/UMMS/traces/  lf@172.21.141.5:/home/lf/Documents/CODE/NewDoing/UMMS/traces/
 
-rsync -rvP  --update --ignore-existing  /data/fong/CODE/PycharmProject/UMMS/traces/  lf@172.21.141.4:/data/project_data_lf/CODE/PycharmProjects/UMMS/traces/
+rsync -avP  --update --ignore-existing  /data/fong/CODE/PycharmProject/UMMS/traces/  lf@172.21.141.4:/data/project_data_lf/CODE/PycharmProjects/UMMS/traces/
 
-rsync -rvP  --update --ignore-existing   /data/fong/CODE/PycharmProject/UMMS/traces/  lf@172.21.114.159:/home/lf/ProjectRepository/CODE/NewDoing/UMMS/traces/
+rsync -avP  --update --ignore-existing   /data/fong/CODE/PycharmProject/UMMS/traces/  lf@172.21.114.159:/home/lf/ProjectRepository/CODE/NewDoing/UMMS/traces/
 
 
 # 8cup

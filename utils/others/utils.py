@@ -7,7 +7,7 @@ import numpy as np
 import warnings
 import csv
 import time
-import yaml
+import datetime
 
 from collections import namedtuple
 from types import SimpleNamespace
@@ -163,6 +163,7 @@ def prepare_sub_folder(output_directory):
 
 
 def get_config(config):
+    import yaml
     with open(config, 'r') as stream:
         loader = yaml.FullLoader(stream)
         out = loader.get_single_data()
@@ -390,18 +391,25 @@ def slim_array(array, dims=None, number=100):
 
 
 # 获取前景大小
-def get_foreground_shape(mask, dims=None, number=50):
+def get_foreground_shape(mask, dims=None, number=50, background_value=0):
+    '''
+    :param mask:
+    :param dims: 只计算特定dim的shape， dims是元组
+    :param number: 最少多少个非零才算前景
+    :param background_value:　背景的值
+    :return:
+    '''
     dims_shape = []
 
     mask = np.array(mask)
     ndim = mask.ndim
-    ind_non_zero = mask != 0
+    ind_non_zero = mask != background_value
     for dim in range(ndim):
         if dims is not None:
             if dim not in dims:
                 continue
-        dim_num = ind_non_zero.shape[dim]
-        non_zero_num = np.sum(np.reshape(np.swapaxes(ind_non_zero, 0, dim), (dim_num, -1)), -1)
+        dim_num = ind_non_zero.shape[dim]   # 第dim维大小
+        non_zero_num = np.sum(np.reshape(np.swapaxes(ind_non_zero, 0, dim), (dim_num, -1)), -1)     # 每一行的前景数
 
         total = non_zero_num.size
         start = 0
@@ -460,3 +468,15 @@ def get_gauusian_kernel_v2(shape):
 
         target = target_tmp if axis == 0 else np.swapaxes(target, 0, axis)
     return target
+
+
+# --------------------------from https://github.com/lucidrains/stylegan2-pytorch/blob/master/stylegan2_pytorch/cli.py
+
+def cast_list(el):
+    return el if isinstance(el, list) else [el]
+
+
+def timestamped_filename(prefix = 'generated-'):
+    now = datetime.now()
+    timestamp = now.strftime("%m-%d-%Y_%H-%M-%S")
+    return f'{prefix}{timestamp}'

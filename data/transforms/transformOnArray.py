@@ -1208,19 +1208,19 @@ class Transformer:
         '''
         opt = self.opt
         trans_list = []
-        trans_list.append(ElasticDeformTransform(self.random_state,
-                                                 order_data=opt.order_data, order_seg=opt.order_seg,
-                                                 alpha=(0., 900.), sigma=(9., 13.),
-                                                 p_el_per_sample=0.2,
-                                                 with_channel=False))
-        trans_list.append(RandomScaleTransform(self.random_state,
-                                               order_data=opt.order_data, order_seg=opt.order_seg,
-                                               scale=opt.scale_range, p_scale_per_sample=0.2,
-                                               p_independent_scale_per_axis=1, independent_scale_for_each_axis=False,
-                                               with_channel=False))
-        trans_list.append(RandomRotateTransform(angle_spectrum=[(-opt.rot_angle_spectrum, opt.rot_angle_spectrum)],
-                                                axes=list(combinations(np.unique(opt.rot_axes), 2)),
-                                                p_per_sample=0.2, p_rot_per_axis=1, with_channel=False))
+        # trans_list.append(ElasticDeformTransform(self.random_state,
+        #                                          order_data=opt.order_data, order_seg=opt.order_seg,
+        #                                          alpha=(0., 900.), sigma=(9., 13.),
+        #                                          p_el_per_sample=0.2,
+        #                                          with_channel=False))
+        # trans_list.append(RandomScaleTransform(self.random_state,
+        #                                        order_data=opt.order_data, order_seg=opt.order_seg,
+        #                                        scale=opt.scale_range, p_scale_per_sample=0.2,
+        #                                        p_independent_scale_per_axis=1, independent_scale_for_each_axis=False,
+        #                                        with_channel=False))
+        # trans_list.append(RandomRotateTransform(angle_spectrum=[(-opt.rot_angle_spectrum, opt.rot_angle_spectrum)],
+        #                                         axes=list(combinations(np.unique(opt.rot_axes), 2)),
+        #                                         p_per_sample=0.2, p_rot_per_axis=1, with_channel=False))
         trans_list.append(CenterCropTransform(opt.crop_size[::-1], with_channel=False))
         trans_list.append(Rot90Transform(num_rot=(1, 2, 3), axes=np.unique(opt.rot_axes),
                                          p_per_sample=0.5, with_channel=False))

@@ -303,7 +303,7 @@ class ResBlock(nn.Module):
         super(ResBlock, self).__init__()
         mid_channels = in_channels//2
         self.conv1 = conv_block(in_channels, mid_channels)
-        self.conv2 = conv_block(in_channels, mid_channels)
+        self.conv2 = conv_block(mid_channels, mid_channels)
 
     def forward(self, x):
         out = x
@@ -389,7 +389,7 @@ def deconvlution(in_planes, out_planes, kernel_size=4, stride=2, padding=1, outp
                               groups=1, bias=use_bias, dilation=1, padding_mode='zeros')
 
 
-def upsample_deconvlution(in_planes, out_planes, kernel_size=4, stride=2, dilation=1, use_bias=False):
+def upsample_deconvlution(in_planes, out_planes, kernel_size=4, stride=2, dilation=1, use_bias=False, padding_mode='zeros'):
     if isinstance(kernel_size, int):
         kernel_size = (kernel_size, ) * 3
     if isinstance(dilation, int):
@@ -407,7 +407,7 @@ def upsample_deconvlution(in_planes, out_planes, kernel_size=4, stride=2, dilati
 
     # print(kernel_size[0], stride[0], in_padding[0], out_padding[0], dilation[0])
     return nn.ConvTranspose3d(in_planes, out_planes, kernel_size, stride, tuple(in_padding), tuple(out_padding),
-                              groups=1, bias=use_bias, dilation=dilation, padding_mode='zeros')
+                              groups=1, bias=use_bias, dilation=dilation, padding_mode=padding_mode)
 
 
 class DCBR(nn.Module):

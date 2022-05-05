@@ -1,6 +1,7 @@
 traces/
 .idea/
 .ipynb_checkpoints/
+*/__pycache__/*
 *.tar.gz
 *ipynb
 *.zip

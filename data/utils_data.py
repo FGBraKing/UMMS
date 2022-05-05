@@ -50,7 +50,7 @@ def nii_loader(path, *args, **kwargs):
         img = sitk.GetArrayFromImage(sitk.ReadImage(path))  # D H W
     except Exception as e:
         print('some wrong hanpped on SimpleItk:{}. then will try to use nibabel'.format(e))
-        img = nib.load(path).get_data()  # W H D
+        img = nib.load(path).get_fdata()  # W H D
         img = np.transpose(img, axes=(2, 1, 0))     # D H W
     if num != -1 and num < img.shape[-1]:
         return img[num, ...]
@@ -347,4 +347,101 @@ def get_rotate_axes(axes):
     return list(combinations(axes, 2))
 
 
+def print_data_describe(data_list, *args, **kwargs):
+    from utils.others.utils import get_foreground_shape
+    def read_img(path):
+        filename, filetype = os.path.splitext(path)
+        if filetype.lower() == '.nii' or filetype.lower() == '.mhd':
+            itk_img = sitk.ReadImage(path)
+            data = sitk.GetArrayFromImage(itk_img)
+            spacing = itk_img.GetSpacing()
+        else:
+            raise TypeError('Filetype(%s) is unsupported' % filetype)
+        return data.transpose([2, 1, 0]), spacing
+    print(len(data_list))
+    print("{:*^120s}".format(''))
+
+    roi_size_set = set()
+    roi_shape_set = set()
+    roi_range_set = set()
+
+    shape_set = set()
+    shape_x_set = set()
+    shape_z_set = set()
+
+    spacing_set = set()
+    spacing_x_set = set()
+    spacing_z_set = set()
+
+    physical_set = set()
+    physical_z_set = set()
+    physical_x_set = set()
+
+    for patient in data_list:
+        print(patient['volume'])
+        label, label_spacing = read_img(patient['label'])
+        label_shape = label.shape
+
+        roi_range = tuple(get_foreground_shape(label, number=10))
+        roi_shape = tuple(map(lambda x: x[1] - x[0], roi_range))
+        roi_size = tuple(map(lambda x, y: round(x * y /10, 2), roi_shape, label_spacing))
+        scan_size = tuple(map(lambda x, y: round(x * y / 10, 2), label_shape, label_spacing))
+
+        print(f'scan_size:{scan_size}cm \t roi_size:{roi_size}cm')
+        roi_size_set.add(roi_size)
+        roi_range_set.add(roi_range)
+        roi_shape_set.add(roi_shape)
+
+        shape_set.add(label_shape)
+        shape_x_set.add(label_shape[0])
+        shape_z_set.add(label_shape[-1])
+
+        spacing_set.add(label_spacing)
+        spacing_x_set.add(label_spacing[0])
+        spacing_z_set.add(label_spacing[-1])
+
+        physical_set.add(scan_size)
+        physical_x_set.add(scan_size[0])
+        physical_z_set.add(scan_size[-1])
+
+    print('roi_size: ')
+    for lb_size in roi_size_set:
+        print(f'{lb_size}cm')
+    print('roi_shape: ')
+    for lb_shape in roi_shape_set:
+        print(f'{lb_shape} pixel')
+    print('roi_range: ')
+    for lb_range in roi_range_set:
+        print(lb_range)
+
+    print('shape_set::', shape_set)
+    print('shape_x_set:', shape_x_set)
+    print('shape_z_set:', shape_z_set)
+    print('space set:', spacing_set)
+    print('space x:', spacing_x_set)
+    print('space z:', spacing_z_set)
+    print('physical set:', physical_set)
+    print('physical_x_set', physical_x_set)
+    print('physical_z_set', physical_z_set)
+
+    for shape in shape_set:
+        print('shape: ', shape)
+    print('min_x:{:<5.0f}, max_x:{:<5.0f}'.format(min(shape_x_set), max(shape_x_set)))
+    print('min_z:{:<5.0f}, max_z:{:<5.0f}'.format(min(shape_z_set), max(shape_z_set)))
+    for space in spacing_set:
+        print('spacing:', space)
+    print('min_x:{:<5.4f}mm, max_x:{:<5.4f}mm'.format(min(spacing_x_set),
+                                                      max(spacing_x_set)))
+    print('min_z:{:<5.4f}mm, max_z:{:<5.4f}mm'.format(min(spacing_z_set),
+                                                      max(spacing_z_set)))
+    for phy in physical_set:
+        print('physical length:{}cm'.format(phy))
+    print('min_x:{:<4.2f}cm, max_x:{:<4.2f}cm'.format(min(physical_x_set), max(physical_x_set)))
+    print('min_z:{:<4.2f}cm, max_z:{:<4.2f}cm'.format(min(physical_z_set), max(physical_z_set)))
+
+    print('the mean (x, z) spacing:({:>6.4f}, {:>6.4f})'.format(np.mean(list(spacing_x_set)),
+                                                                np.mean(list(spacing_z_set))))
+
+    all_roi_shape = np.array(list(roi_shape_set))
+    print('the mean roi shape: ({:>3.0f}, {:>3.0f}, {:>3.0f})'.format(*all_roi_shape.mean(0)))
 

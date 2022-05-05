@@ -6,10 +6,10 @@ def parse_args(args=None):
     parser = ArgumentParser(description="Project's useful tool to parse args")
     # rest from the training program
     # local_rank, is suitable to distrubute.launch
-    parser.add_argument('--local_rank', type=int, default=-1,
-                        help='local_rank of distributed processes. local_rank = gpu_ids[ind], -1 means cpu')
     parser.add_argument('--config_path', type=str, default=None, help='the path of config')
     parser.add_argument('--use_config', default=False, action="store_true", help='whether to use config')
+    parser.add_argument('--local_rank', type=int, default=-1,
+                        help='local_rank of distributed processes. local_rank = gpu_ids[ind], -1 means cpu')
     parser.add_argument('--use_current_local_rank', default=False, action="store_true",
                         help='whether to use local_rank in this args. only useful when using torch.disribute.launch')
 

@@ -128,6 +128,35 @@ class InConv(nn.Module):
         return self.conv(x, domain)
 
 
+# class InConv(nn.Module):
+#     def __init__(self, domains, norm_type, in_channels, out_channels, use_bias=None, slope=2e-1):
+#         super(InConv, self).__init__()
+#         if use_bias is None:
+#             use_bias = not norm_type == 'batch'
+#
+#         conv1_in_channels = in_channels
+#         conv2_in_channels = conv1_out_channels = out_channels//2 if in_channels < out_channels else out_channels
+#         conv2_out_channels = out_channels
+#
+#         self.conv1 = nn.Conv3d(conv1_in_channels, conv1_out_channels, (3,3,3), (1,1,1), (1,3,3), bias=use_bias)
+#         self.norm1 = NormalizationDict(domains, norm_type, num_features=conv1_out_channels, affine=True)
+#
+#         self.conv2 = nn.Conv3d(conv2_in_channels, conv2_out_channels, (3,3,3), (1,1,1), (0,3,3), bias=use_bias)
+#         self.norm2 = NormalizationDict(domains, norm_type, num_features=conv2_out_channels, affine=True)
+#
+#         self.act = nn.LeakyReLU(negative_slope=slope, inplace=True)
+#
+#     def forward(self, x, domain):
+#         x = self.conv1(x)
+#         x = self.norm1(x, domain)
+#         x = self.act(x)
+#
+#         x = self.conv2(x)
+#         x = self.norm2(x, domain)
+#         x = self.act(x)
+#         return x
+
+
 class EncodeBlockWithNormDict(nn.Module):
     def __init__(self, domains, norm_type, in_channels, out_channels, conv_kernel_size=3,
                  is_max_pool=True, max_pool_kernel_size=(2, 2, 2)):
@@ -162,6 +191,7 @@ class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=(1, 1, 1), activation=False, upsampling=1):
         super(OutConv, self).__init__()
         self.conv3d = nn.Conv3d(in_channels, out_channels, kernel_size=kernel_size, padding=[a//2 for a in kernel_size])
+        # self.conv3d = nn.Conv3d(in_channels, out_channels, kernel_size=(3,1,1), padding=(1,0,0))
         self.upsampling = nn.Upsample(scale_factor=upsampling, mode='trilinear', align_corners=True) if upsampling > 1 else nn.Identity()
         self.activation = activation
 
@@ -229,28 +259,28 @@ if __name__ == "__main__":
     # from models.auxiliary_hookers import FeatureMapExtractor, FeatureGradientExtractor
     from models.auxiliary_funs import print_model_parm_nums, print_model_parm_flops
 
-    device = torch.device(f"cuda:{2}" if torch.cuda.is_available() else 'cpu')
+    device = torch.device(f"cuda:{0}" if torch.cuda.is_available() else 'cpu')
     net = UnetWithNormSpecficity(domains=['target', 'source'], norm_type='batch',
                                  in_channels=1, n_class=1, init_channel_number=16, final_sigmoid=True).to(device)
 
-    print('---------------------------------------------------------')
-    for name, layer in net.named_modules():
-        print(name, type(layer))
-    print('---------------------------------------------------------')
-    for name, layer in net.named_children():
-        print(name, type(layer))
-
-    for k, v in net.named_parameters():
-        print(k, v.size())
-
-        print(v.nelement())
-
-    for k, v in net.named_buffers():
-        print(k, v.size())
+    # print('---------------------------------------------------------')
+    # for name, layer in net.named_modules():
+    #     print(name, type(layer))
+    # print('---------------------------------------------------------')
+    # for name, layer in net.named_children():
+    #     print(name, type(layer))
+    #
+    # for k, v in net.named_parameters():
+    #     print(k, v.size())
+    #
+    #     print(v.nelement())
+    #
+    # for k, v in net.named_buffers():
+    #     print(k, v.size())
 
     func_net = partial(net, domain='target')
 
-    inputs = torch.rand((4, 1, 24, 192, 192), requires_grad=True).to(device)
+    inputs = torch.rand((4, 1, 80, 96, 96), requires_grad=True).to(device)  # 64,96,96
     print_model_parm_nums(net)  # 40.15M
 
     out = net(inputs, 'target')
@@ -258,7 +288,8 @@ if __name__ == "__main__":
 
     print(net.get_L2_norm())
     # print_model_parm_flops(func_net, inputs, need_idx=False)  # 751.84G
-    # summary(func_net, input_size=(1, 128, 128, 32), batch_size=1, device='cuda')
+    # summary(func_net, input_size=(1, 64, 96, 96), batch_size=1, device='cuda')
+
 
 
 

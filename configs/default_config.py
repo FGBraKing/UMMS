@@ -5,56 +5,28 @@
 from yacs.config import CfgNode as CN
 
 
-_C = CN(new_allowed=True)  # init_dict=None, key_list=None, new_allowed=False
+_C = CN()
+# _C = CN(new_allowed=True)  # init_dict=None, key_list=None, new_allowed=False
 
 
 # ---------------------------------------------------------------------------- #
-# basic
-# ---------------------------------------------------------------------------- #
-_C.name = None
-_C.dataset_name = None
-_C.model_name = None
-_C.seed = 1008
-_C.gpu_ids = None
-_C.visible_gpu = None
-_C.local_gpu = -1
-_C.DEBUG = None
-_C.deterministic = None
-# ---------------------------------------------------------------------------- #
-# tricks
-# ---------------------------------------------------------------------------- #
-_C.use_mixed_precision = None
-# DDP
-_C.DP = None
-_C.DDP = None
-_C.SyncBatchNorm = None
-_C.world_size = None
-_C.rank = None
-_C.local_rank = None
-_C.dist_url = None
-_C.dist_backend = 'nccl'
-# horovod
-_C.HOROVOD = False
-_C.HOROVOD_fp16 = False
-_C.HOROVOD_backward_passes_per_step = False
-_C.HOROVOD_use_adasum = False
-_C.HOROVOD_gradient_predivide_factor = 1.0
-# Apex
-_C.APEX = False
-_C.APEX_opt_level = 'O1'
-# ---------------------------------------------------------------------------- #
-# dataset
+# 数据参数：包括数据集参数和数据增强参数
 # ---------------------------------------------------------------------------- #
 # dataset
 _C.dataroot = None
 _C.phase = None
+_C.fold = None
 _C.serial_batches = None
-_C.data_shuffle = None
 _C.custom = None
 _C.preprocess = None
 _C.crop_size = None
 _C.target_size = None
 _C.scale = None
+_C.scale_range = None
+_C.rot_angle_spectrum = None
+_C.rot_axes = None
+_C.mirror_axes = None
+_C.g_noise_variance = None
 _C.bright_mu = None
 _C.bright_sigma = None
 _C.elastic_alpha = None
@@ -64,12 +36,13 @@ _C.shift_sigma = None
 _C.order_data = 3
 _C.order_seg = 1
 # dataloader
-_C.num_threads = None
 _C.batch_size = None
+_C.data_shuffle = None
+_C.num_threads = None
 _C.drop_last = None
 _C.max_dataset_size = float('inf')
 # ---------------------------------------------------------------------------- #
-# module
+# 网络参数：包括模块超参数和初始化参数
 # ---------------------------------------------------------------------------- #
 # model
 _C.input_nc = None
@@ -77,6 +50,13 @@ _C.output_nc = None
 _C.init_channel_number = None
 _C.up_interpolate = None
 _C.conv_order = None
+# initialization
+_C.init_type = None
+_C.init_gain = None
+_C.init_std = None
+# ---------------------------------------------------------------------------- #
+# 优化参数：包括优化器、学习率和损失函数等
+# ---------------------------------------------------------------------------- #
 # loss
 _C.loss_name = 'combo'
 _C.loss_alpha = None
@@ -87,26 +67,19 @@ _C.loss_eps = 1e-7
 _C.loss_smooth = None
 _C.reduction = None
 _C.ignore_index = None
-# initialization
-_C.init_type = None
-_C.init_gain = None
-_C.init_std = None
-# ---------------------------------------------------------------------------- #
-# optimizer
-# ---------------------------------------------------------------------------- #
 # optimizer
 _C.optimizer_name = None
 _C.lr = None
 _C.weight_decay = 0.0
 _C.momentum = 0.9
-_C.beta1 = 0.9
+_C.optim_beta = 0.9
 # scheduler
 _C.lr_policy = None
 _C.lr_noise = None
 _C.lr_noise_pct = 0.67
 _C.lr_noise_std = 1.
-_C.warmup_epochs = None
 _C.warmup_lr = None
+_C.warmup_epochs = None
 _C.warmup_prefix = True
 _C.lr_cycle_mul = None
 _C.lr_cycle_decay = None
@@ -119,25 +92,60 @@ _C.lr_k_decay = 1.0
 _C.eval_metric = ''
 _C.patience_epochs = 20
 # ---------------------------------------------------------------------------- #
-# model
+# 训练技巧，包括梯度累计、混合精度、多卡加速等
 # ---------------------------------------------------------------------------- #
+# gradient_accumulation
+_C.use_gradient_accumulation = False
+_C.gradient_accumulation_k_step = None
+# mixed_precision
+_C.use_mixed_precision = None
+# DDP
+_C.DP = None
+_C.DDP = None
+_C.SyncBatchNorm = None
+_C.world_size = None
+_C.rank = None
+_C.local_rank = None
+_C.dist_url = None          # 'env://'
+_C.dist_backend = 'nccl'
+# horovod
+_C.HOROVOD = False
+_C.HOROVOD_fp16 = False
+_C.HOROVOD_backward_passes_per_step = False
+_C.HOROVOD_use_adasum = False
+_C.HOROVOD_gradient_predivide_factor = 1.0
+# Apex
+_C.APEX = False
+_C.APEX_opt_level = 'O1'
+# ---------------------------------------------------------------------------- #
+# 可视化、保存频率、打印频率、文件路径等辅助参数
+# ---------------------------------------------------------------------------- #
+# basic
+_C.name = None
+_C.dataset_name = None
+_C.model_name = None
+_C.seed = 1008
+_C.gpu_ids = None
+_C.visible_gpu = None
+_C.local_gpu = -1
+_C.isTrain = None   # 兼容旧代码，未来可能删除
+_C.single = True   # 是否多模态训练
+_C.DEBUG = None
+_C.deterministic = None
+# additional
+_C.suffix = None
+_C.verbose = None
+# files path
 _C.logs_dir = './traces/logs'
+_C.results_dir = './traces/results'
 _C.checkpoints_dir = './traces/checkpoints'
 _C.weight_path = None
 _C.optimizer_path = None
 _C.apex_path = None
-_C.continue_train = None
-_C.verbose = None
-# additional
-_C.suffix = None
+# basic train
 _C.epoch_start = None
 _C.num_epochs = None
-
-# ---------------------------------------------------------------------------- #
-# train
-# ---------------------------------------------------------------------------- #
-_C.use_gradient_accumulation = False
-_C.gradient_accumulation_k_step = None
+_C.continue_train = None
 # network saving and loading
 _C.save_epoch_start = None
 _C.save_epoch_freq = None
@@ -158,7 +166,6 @@ _C.save_log = True
 _C.save_visuals = False
 _C.save_only_latest = True
 _C.save_visuals_frep = 1
-
 # visdom
 _C.visdom_server = '172.21.16.17:25555'
 _C.display_port = 6666
@@ -174,11 +181,17 @@ _C.display_histogram = False
 _C.play_video = False
 
 # ---------------------------------------------------------------------------- #
-# test
+# test                    测试时使用的参数,部分可能没有在option上实现，建议使用yaml文件
 # ---------------------------------------------------------------------------- #
-_C.results_dir = './traces/results'
 _C.eval = None
+_C.test_data_phase = None
+_C.test_batchsize = None
+
+_C.test_preprocess = None
+_C.test_scale = None
 
 
-
+# ---------------------------------------------------------------------------- #
+# predict                  预测时使用的参数,部分可能没有在option上实现，建议使用yaml文件
+# ---------------------------------------------------------------------------- #
 
