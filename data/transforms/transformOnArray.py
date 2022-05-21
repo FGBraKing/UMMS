@@ -1253,7 +1253,8 @@ class Transformer:
             trans_list.append(RandomScaleTransform(self.random_state,
                                                    order_data=opt.order_data, order_seg=opt.order_seg,
                                                    scale=opt.scale_range, p_scale_per_sample=0.2,
-                                                   p_independent_scale_per_axis=1, independent_scale_for_each_axis=False,
+                                                   p_independent_scale_per_axis=1,
+                                                   independent_scale_for_each_axis=False,
                                                    with_channel=False))
         if 'randomcrop' in preprocess:
             # # crop_size = opt.crop_size
@@ -1376,38 +1377,45 @@ def get_post_transform(opt):
     '''
     transform_list = []
     preprocess = opt.preprocess.split('_')
+    # 均值为0的高斯加性噪声
     if 'gaussianNoise' in preprocess:
         transform_list.append(GaussianNoiseTransform(opt.random_state,
                                                      noise_variance=opt.g_noise_variance,
                                                      p_per_sample=0.15,
                                                      with_channel=False))
+    # 高斯滤波
     if 'GaussianBlur' in preprocess:
         transform_list.append(GaussianBlurTransform(opt.random_state, blur_sigma=(0.5, 1.5),
                                                     different_sigma_per_channel=True,
                                                     p_per_sample=0.2, p_per_channel=0.5, with_channel=False))
+    # 高斯分布加性噪声
     if 'brightness' in preprocess:
         transform_list.append(BrightnessTransform(opt.random_state,
                                                   mu=opt.bright_mu, sigma=opt.bright_sigma, per_channel=True,
                                                   p_per_sample=0.15, p_per_channel=0.5,
                                                   with_channel=False))
+    # 乘性噪声
     if 'BrightnessMultiplicative' in preprocess:
-        transform_list.append(BrightnessMultiplicativeTransform(multiplier_range=(0.7, 1.3),
+        transform_list.append(BrightnessMultiplicativeTransform(multiplier_range=opt.bright_multiplier_range,
                                                                 per_channel=True, p_per_sample=0.15,
                                                                 with_channel=False))
+    # 调整数据方差
     if 'contrast' in preprocess:
         transform_list.append(ContrastAugmentationTransform(opt.random_state,
-                                                            contrast_range=(0.65, 1.5),
+                                                            contrast_range=opt.contrast_range,
                                                             preserve_range=True, per_channel=True,
                                                             p_per_sample=0.15, p_per_channel=1., with_channel=False))
+    # 先下采样再上采样
     if 'simulate' in preprocess:
-        transform_list.append(SimulateLowResolutionTransform(zoom_range=(0.5, 1), per_channel=False,
+        transform_list.append(SimulateLowResolutionTransform(zoom_range=opt.simulate_zoom_range, per_channel=False,
                                                              p_per_channel=0.5, p_per_sample=0.25, channels=None,
-                                                             order_downsample=0, order_upsample=3,
+                                                             order_downsample=1, order_upsample=3,
                                                              ignore_axes=None, with_channel=False))
+    # 指数变换
     if 'gammatransform' in preprocess:
         transform_list.append(GammaTransform(opt.random_state,
-                                             gamma_range=(0.7, 1.5), invert_image=False,
-                                             per_channel=False, retain_stats=True, p_per_sample=0.3,
+                                             gamma_range=opt.gamma_range, invert_image=False,
+                                             per_channel=False, retain_stats=True, p_per_sample=0.15,
                                              with_channel=False))
 
     # transform_list.append(ToTensor(expand_dims=True))

@@ -157,7 +157,7 @@ class VNet(nn.Module):
 
 
 def test():
-    data = torch.rand(1, 1, 32, 64, 64).cuda()
+    data = torch.rand(1, 1, 80, 96, 96).cuda()
     model = VNet(classes=4).cuda()
 
     out = data

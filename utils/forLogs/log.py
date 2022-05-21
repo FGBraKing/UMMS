@@ -117,9 +117,6 @@ class Logger(object):
             self.file = None
 
 
-
-
-
 def get_logger(logname=None, level=logging.DEBUG, is_save=False, save_name='log.txt',
                fmt="[%(asctime)-15s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"):
     logger = logging.getLogger(logname)

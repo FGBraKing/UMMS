@@ -29,11 +29,13 @@ server3=(
   ["working_dir"]="/home/lf/raid_lf"
 )
 
+machine_num=4
+
 #echo "${server0[*]}"
 #echo "${server3[@]}"
 #echo "${!server3[*]}"
 
-for id in $(seq 0 3)
+for id in $(seq 0 $((machine_num - 1)))
 do
 #  eval  echo '$'"{server${id}[*]}"
   working_dir=$(eval echo '$'"{server${id}[working_dir]}")
@@ -52,8 +54,9 @@ echo "source_data_dir: ${source_data_dir}"
 echo "source_project_dir: ${source_project_dir}"
 
 # 字符串比较：!=
-for id in $(seq 0 3)
+for id in $(seq 0 $((machine_num - 1)))
 do
+  echo "*************************************××******${id}**********************************************************"
 #  echo "${id}"
   if [ "${id}" -ne "${valid_id}" ]; then
     target_ip=$(eval echo '$'"{server${id}[ip]}")
@@ -63,13 +66,17 @@ do
     echo "synchronizing from ${source_data_dir}  to  ${target_data_dir}"
     eval "rsync -avP --update --delete-after --delete-excluded --exclude='.*' ${source_data_dir}  ${target_data_dir}"
     echo "synchronizing from ${source_project_dir}  to  ${target_project_dir}"
-    eval "rsync -avP --update --delete-after --delete-excluded --exclude='.*' --exclude='*/__pycache__/*' ${source_project_dir} ${target_project_dir}"
+# 完全同步、同步代码、同步traces
+#    eval "rsync -avP --update --delete-after --delete-excluded  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
+    eval "rsync -avP --update --delete-after --exclude='traces/*' --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
+#    eval "rsync -avP --update  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
   fi
 done
 
 echo "*************************************××********end**************************************************************"
 
-
+# --delete-after --delete-excluded
+#  --exclude='traces/*'
 # --append --inplace
 # --update  --size-only
 # --existing --ignore-existing --delete-after

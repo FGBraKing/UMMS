@@ -19,7 +19,7 @@ SUPPORT_SCHEDULERS = ['cosine', 'tanh', 'step', 'multistep', 'plateau', 'poly', 
 # other_args: num_epochs min_lr  lr_k_decay  cooldown_epochs decay_rate decay_epochs patience_epochs eval_metric
 
 #    cosine:  num_epochs min_lr  lr_k_decay  cooldown_epochs
-#      tanh:  num_epochs min_lr              cooldown_epochs
+#      tanh:  num_epochs min_lr  lr_k_decay  cooldown_epochs
 #      poly:  num_epochs min_lr  lr_k_decay  cooldown_epochs decay_rate
 #    linear:             min_lr                                         decay_epochs
 #      step:                                                 decay_rate decay_epochs
@@ -82,7 +82,19 @@ def create_scheduler(args, optimizer):
             optimizer,
             t_initial=num_epochs,
             lr_min=args.min_lr,
-            t_in_epochs=True,
+            k_decay=getattr(args, 'lr_k_decay', 1.0),
+            **warmup_args,
+            **cycle_args,
+            **noise_args
+        )
+        num_epochs = lr_scheduler.get_cycle_length() + args.cooldown_epochs
+    elif args.lr_policy == 'poly':
+        lr_scheduler = PolyLRScheduler(
+            optimizer,
+            power=args.decay_rate,  # overloading 'decay_rate' as polynomial power
+            t_initial=num_epochs,
+            lr_min=args.min_lr,
+            k_decay=getattr(args, 'lr_k_decay', 1.0),
             **warmup_args,
             **cycle_args,
             **noise_args
@@ -116,18 +128,6 @@ def create_scheduler(args, optimizer):
             **warmup_args,
             **noise_args
         )
-    elif args.lr_policy == 'poly':
-        lr_scheduler = PolyLRScheduler(
-            optimizer,
-            power=args.decay_rate,  # overloading 'decay_rate' as polynomial power
-            t_initial=num_epochs,
-            lr_min=args.min_lr,
-            k_decay=getattr(args, 'lr_k_decay', 1.0),
-            **warmup_args,
-            **cycle_args,
-            **noise_args
-        )
-        num_epochs = lr_scheduler.get_cycle_length() + args.cooldown_epochs
     elif args.lr_policy == 'linear':
         lr_scheduler = LinearScheduler(
             optimizer,

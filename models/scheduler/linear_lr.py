@@ -17,7 +17,7 @@ class LinearScheduler(Scheduler):
     def __init__(self,
                  optimizer: torch.optim.Optimizer,
                  decay_t: float,
-                 decay_rate: float = 1.,
+                 # decay_rate: float = 1.,
                  lr_min: float = 1e-8,
                  warmup_t=0,
                  warmup_lr_init=0,
@@ -35,7 +35,7 @@ class LinearScheduler(Scheduler):
             initialize=initialize)
 
         self.decay_t = decay_t
-        self.decay_rate = decay_rate
+        # self.decay_rate = decay_rate
         self.warmup_t = warmup_t
         self.warmup_lr_init = warmup_lr_init
         self.warmup_prefix = warmup_prefix

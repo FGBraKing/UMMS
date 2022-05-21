@@ -38,9 +38,9 @@ def show_density(data):
     fig.show()
 
 
-if __name__=="__main__":
-    data1_path = r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20_pre_std/mr/P070_MR_image.nii'
-    data2_path = r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20_pre_std/us/P070_US_image.nii'
+if __name__ == "__main__":
+    data1_path = r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre128/P070/P070_mr_volume.nii'
+    data2_path = r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre128/P070/P070_us_volume.nii'
 
     data_path = r'/home/lf/raid_lf/DATA/MR-USviaFenster20/P070/P070_MR.nii'
     data_path1 = r'/home/lf/raid_lf/DATA/MR-USviaFenster20/P070/P070_US.nii'

@@ -40,6 +40,8 @@ def get_opt(args=None, save_log=True):
         if args.use_current_local_rank:
             cfg.local_rank = args.local_rank
         option = SimpleNamespace(**cfg)
+        if option.suffix:
+            option.name = option.name + '_' + option.suffix
         # option = ConfigDict(cfg)
         option.use_distribute_sample = option.DDP or option.HOROVOD
 

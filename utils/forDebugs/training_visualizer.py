@@ -58,44 +58,42 @@ def draw_mask_predict_edge_on_image_skimage(image, label, segment, label_color=(
     show_image(image, cmap=None, title=title)
 
 
-def visulaizing_training_result(data_path, key_volume, key_segment, key_label, number=None, interval=2):
-    data_name = os.path.basename(data_path).split('.')[0]
-    volume, segment, label = h5_loader(data_path, key_volume, key_segment, key_label)
-    if number is not None:
-        vol = volume[number, 0, ...]
-        seg = segment[number, 0, ...]
-        lab = label[number, 0, ...]
-        show_volume_label_predict(vol, seg, lab,
+def visulaizing_training_result(data_path, key_volume, key_label, key_segment, number=None, interval=2):
+    def inner_show_result(i_vol, i_lab, i_seg, title):
+        show_volume_label_predict(i_vol, i_lab, i_seg,
                                   interval=interval, add_line=True, normalize_per=False,
-                                  row=3, col=2, title=data_name)
+                                  row=3, col=2, title=title)
         i = 0
-        for img_sub, seg_sub, lab_sub in zip(vol[::interval, ...], seg[::interval, ...], lab[::interval, ...]):
+        for img_sub, lab_sub, seg_sub in zip(i_vol[::interval, ...], i_lab[::interval, ...], i_seg[::interval, ...]):
             i += 1
-            draw_mask_predict_edge_on_image_skimage(img_sub, seg_sub, lab_sub, title=f'test edge{i}')
+            draw_mask_predict_edge_on_image_skimage(img_sub, lab_sub, seg_sub, title=f'test edge{i}')
+
+    data_name = os.path.basename(data_path).split('.')[0]
+    volume, label, segment = h5_loader(data_path, key_volume, key_label, key_segment)
+    if volume.ndim == 3:
+        inner_show_result(volume, label, segment, data_name)
+    elif number is not None:
+        vol = volume[number, 0, ...]
+        lab = label[number, 0, ...]
+        seg = segment[number, 0, ...]
+        inner_show_result(vol, lab, seg, data_name)
     else:
         for vol, seg, lab in zip(volume, segment, label):
             vol = vol[0, ...]
-            seg = seg[0, ...]
             lab = lab[0, ...]
-            show_volume_label_predict(vol, seg, lab,
-                                      interval=interval, add_line=True, normalize_per=False,
-                                      row=3, col=2, title=data_name)
-
-            i = 0
-            for img_sub, seg_sub, lab_sub in zip(vol[::interval, ...], seg[::interval, ...], lab[::interval, ...]):
-                i += 1
-                draw_mask_predict_edge_on_image_skimage(img_sub, seg_sub, lab_sub, title=f'test edge{i}')
+            seg = seg[0, ...]
+            inner_show_result(vol, lab, seg, data_name)
 
 
 if __name__ == "__main__":
-    logs_dir = r'/home/lf/data_fong/CODE/PycharmProject/DLForPytorch/traces/logs'
-    exp_name = r'mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
+    logs_dir = r'/home/lf/raid_lf/PROJECT/UMMS/traces/logs'
+    exp_name = r'mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_1.5_adam_2e-4_poly_3x300_0.6'
     #
     train_train_data = os.path.join(logs_dir, exp_name, 'visuals', 'latestvisuals.h5')
     train_test_data = os.path.join(logs_dir, exp_name, 'visuals',  'latest-testvisuals.h5')
+    slide_test_data = os.path.join(logs_dir, exp_name, 'visuals',  'latest-slidevisuals.h5')
 
-    # visulaizing_training_result(train_train_data, 'volume', 'predict', 'label', number=1, interval=2)
-    visulaizing_training_result(train_test_data, 'volume', 'predict', 'label', number=1, interval=2)
+    visulaizing_training_result(slide_test_data, 'volume', 'label', 'predict', number=0, interval=2)
 
     # print_numpy(volume, shp=True, percentile=True)
     # # shape, (6, 1, 32, 96, 96)

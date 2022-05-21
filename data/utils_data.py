@@ -52,7 +52,7 @@ def nii_loader(path, *args, **kwargs):
         print('some wrong hanpped on SimpleItk:{}. then will try to use nibabel'.format(e))
         img = nib.load(path).get_fdata()  # W H D
         img = np.transpose(img, axes=(2, 1, 0))     # D H W
-    if num != -1 and num < img.shape[-1]:
+    if num != -1 and num < img.shape[0]:
         return img[num, ...]
     else:
         return img
@@ -377,6 +377,8 @@ def print_data_describe(data_list, *args, **kwargs):
     physical_z_set = set()
     physical_x_set = set()
 
+    area_rate_set = set()
+
     for patient in data_list:
         print(patient['volume'])
         label, label_spacing = read_img(patient['label'])
@@ -386,8 +388,11 @@ def print_data_describe(data_list, *args, **kwargs):
         roi_shape = tuple(map(lambda x: x[1] - x[0], roi_range))
         roi_size = tuple(map(lambda x, y: round(x * y /10, 2), roi_shape, label_spacing))
         scan_size = tuple(map(lambda x, y: round(x * y / 10, 2), label_shape, label_spacing))
+        area_rate = label.sum()/label.size
 
-        print(f'scan_size:{scan_size}cm \t roi_size:{roi_size}cm')
+        print('scan_size:{}cm \t roi_size:{}cm\t rate: {:6.4%}'.format(scan_size, roi_size, area_rate))
+        area_rate_set.add(area_rate)
+
         roi_size_set.add(roi_size)
         roi_range_set.add(roi_range)
         roi_shape_set.add(roi_shape)
@@ -413,6 +418,9 @@ def print_data_describe(data_list, *args, **kwargs):
     print('roi_range: ')
     for lb_range in roi_range_set:
         print(lb_range)
+    print('roi area rate:')
+    for area_rate in area_rate_set:
+        print('{:>6.4%}'.format(area_rate))
 
     print('shape_set::', shape_set)
     print('shape_x_set:', shape_x_set)

@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import torch.nn as nn
 import torchvision
-from torch.autograd import Variable
 import torchvision.utils as vutils
+from torch.autograd import Variable
 from collections import OrderedDict
 from graphviz import Digraph
 
@@ -290,45 +290,15 @@ def get_names_dict(model):
 
 
 # ----------------------------------------------CUSTOM -------------------------------------
-# 提取指定层输出的特征和输出特征的梯度
-class FeatureExtractor:
-    """ Class for extracting activations and
-    registering gradients from targetted intermediate layers """
-    def __init__(self, model, target_layers: list):
-        '''
-        :param model:
-        :param target_layers: list, module_name
-        '''
-        self.model = model
-        self.target_layers = target_layers
-        self.gradients = []
 
-    # define hooker, another way is tensor.retain_graph()
-    def save_gradient(self, grad):
-        self.gradients.append(grad)
-
-    def __call__(self, x):
-        outputs = []
-        self.gradients = []
-        for name, module in self.model.named_children():
-            x = module(x)
-            print('name=', name)
-            print('x.size()=', x.size())
-            if name in self.target_layers:
-                x.register_hook(self.save_gradient)
-                outputs += [x]
-        return outputs, x
-
-
-# register_forward_hook
-# register_forward_pre_hook
-# 提取指定层的名字和输入输出特征图
+# register_forward_hook,register_forward_pre_hook, 提取指定层的名字和输入输出特征图
 class FeatureMapExtractor:
     def __init__(self):
         self.features_in = []
         self.features_out = []
         self.module_name_in = []
         self.module_name_out = []
+        self.handles = []
 
     def feature_out_hooker(self, module, feature_in, feature_out):
         '''
@@ -355,17 +325,23 @@ class FeatureMapExtractor:
         self.features_out = []
         self.module_name_in = []
         self.module_name_out = []
+        self.remove_hooker()
+        self.handles = []
 
     def hook_the_model(self, model, layers=None):
         if layers:
             for name, module in model.named_modules():
                 if name in layers:
-                    module.register_forward_hook(self.feature_out_hooker)
-                    module.register_forward_pre_hook(self.feature_in_hooker)
+                    self.handles.append(module.register_forward_hook(self.feature_out_hooker))
+                    self.handles.append(module.register_forward_pre_hook(self.feature_in_hooker))
         else:
             for module in model.modules():
-                module.register_forward_hook(self.feature_out_hooker)
-                module.register_forward_pre_hook(self.feature_in_hooker)
+                self.handles.append(module.register_forward_hook(self.feature_out_hooker))
+                self.handles.append(module.register_forward_pre_hook(self.feature_in_hooker))
+
+    def remove_hooker(self):
+        for handle in self.handles:
+            handle.remove()
 
     def get_feature(self):
         assert self.module_name_in == self.module_name_out
@@ -378,22 +354,29 @@ class FeatureMapExtractor:
         return self.module_name_out, self.features_out
 
 
-# register_backward_hook
-# 提取指定层输出特征图的梯度,
-# 在测试中，这个grad_input的结果有些奇怪,毕竟grad_input是该层用于计算梯度的输入
-# grad_output的结果是正确的
+# register_backward_hook,提取指定层输出特征图的梯度,在测试中，这个grad_input的结果有些奇怪,grad_output的结果是正确的
 class FeatureGradientExtractor:
     def __init__(self):
         self.module_name = []
         self.grad_input = []
         self.grad_output = []
+        self.handles = []
 
     def reset(self):
         self.module_name = []
         self.grad_input = []
         self.grad_output = []
+        self.remove_hooker()
+        self.handles = []
 
     def grad_hook(self, module, grad_input, grad_output):
+        '''
+        :param module:
+        :param grad_input:包含所有输入x、权重w、偏置b的梯度。
+            三者的顺序在不同网络层不一样，nn.Linear：b、x、w。Conv2d：x、w、b
+        :param grad_output:
+        :return: None
+        '''
         self.module_name.append(module.__class__)
         self.grad_input.append(grad_input)
         self.grad_output.append(grad_output[0])
@@ -403,10 +386,15 @@ class FeatureGradientExtractor:
             for name, module in model.named_modules():
                 assert isinstance(module, torch.nn.Module)
                 if name in layers:
-                    module.register_backward_hook(self.grad_hook)
+                    self.handles.append(module.register_backward_hook(self.grad_hook))
         else:
             for module in model.modules():
-                module.register_backward_hook(self.grad_hook)
+                self.handles.append(module.register_backward_hook(self.grad_hook))
+                # register_backward_hook返回一个handle，有个remove()方法，用于将hooker从网络中去除
+
+    def remove_hooker(self):
+        for handle in self.handles:
+            handle.remove()
 
     def get_grad(self):
         return self.module_name, self.grad_output
@@ -415,8 +403,38 @@ class FeatureGradientExtractor:
         return self.module_name, self.grad_input, self.grad_output
 
 
-# register_hook
-# 获取指定层的权重的梯度
+# 提取指定层输出的特征和输出特征的梯度
+class FeatureExtractor:
+    """ Class for extracting activations and
+    registering gradients from targetted intermediate layers """
+    def __init__(self, model, target_layers: list):
+        '''
+        :param model:
+        :param target_layers: list, module_name
+        '''
+        self.model = model
+        self.target_layers = target_layers
+        self.gradients = []
+
+    # define hooker, another way is tensor.retain_graph()
+    def save_gradient(self, grad):
+        self.gradients.append(grad)
+
+    def __call__(self, x):
+        outputs = []
+        self.gradients = []
+        for name, module in self.model.named_children():
+            x = module(x)
+            print('name=', name)
+            print('x.size()=', x.size())
+            if name in self.target_layers:
+                x.register_hook(self.save_gradient)
+                outputs.append(x)
+                # outputs += [x]
+        return outputs, x
+
+
+# register_hook, 获取指定层的权重的梯度
 class WeightGradientExtractor:
     def __init__(self):
         self.grad = []

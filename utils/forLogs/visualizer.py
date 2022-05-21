@@ -128,11 +128,13 @@ class Visualizer:
         self.visuals_dir = os.path.join(opt.logs_dir, opt.name, 'visuals')
         mkdirs(self.visuals_dir)
         self.log_name = os.path.join(opt.logs_dir, opt.name, 'message.txt')
-        self.loss_log_name = os.path.join(opt.logs_dir, opt.name, 'loss_log.txt')
-        self.metrics_log_name = os.path.join(opt.logs_dir, opt.name, 'metrics_log.txt')
+        self.loss_log_name = os.path.join(opt.logs_dir, opt.name, 'loss.txt')
+        self.metrics_log_name = os.path.join(opt.logs_dir, opt.name, 'metrics.txt')
 
         if opt.DEBUG:
             self.opt.save_log = False
+
+        # =================================一共定义了5个logger
 
         self.message_logger = log.LOG(logname='train_message_log', is_save=self.opt.save_log,
                                       save_name=self.log_name, fmt='%(message)s')
@@ -147,10 +149,15 @@ class Visualizer:
         self.metrics_msg_logger('{:#^50s}'.format('  Training metrics  '))
 
         if opt.test_on_train:
-            test_log_name = os.path.join(opt.logs_dir, opt.name, 'test_metrics_log.txt')
+            test_log_name = os.path.join(opt.logs_dir, opt.name, 'test_metrics.txt')
             self.test_msg_logger = log.LOG(logname='test_log', is_save=self.opt.save_log,
                                            save_name=test_log_name, fmt='%(message)s')
             self.test_msg_logger(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            if not opt.DDP:
+                slide_test_log_name = os.path.join(opt.logs_dir, opt.name, 'slide_test_metrics.txt')
+                self.slide_test_msg_logger = log.LOG(logname='slide_test_log', is_save=self.opt.save_log,
+                                                     save_name=slide_test_log_name, fmt='%(message)s')
+                self.slide_test_msg_logger(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
     def create_visdom_connections(self):
         """
@@ -360,7 +367,7 @@ class Visualizer:
 
     def print_current_test_metrics(self, metrics, epoch, batch_id, prefix=''):
         message = prefix
-        message += '(epoch: %d, batch_id: %d) ' % (epoch, batch_id)
+        message += '(epoch: %d, test_batch_id: %d) ' % (epoch, batch_id)
         for k, v in metrics.items():
             try:
                 message += '%s: %.4f ' % (k, v)
@@ -368,6 +375,29 @@ class Visualizer:
                 # print('some wrong happened %s' % e)
                 message += '%s: %r ' % (k, list(v))
         self.test_msg_logger(message)
+
+    def print_current_slide_test_metrics(self, metrics, epoch, batch_id, prefix=''):
+        message = prefix
+        message += '(epoch: %d, slide_batch_id: %d) ' % (epoch, batch_id)
+        for k, v in metrics.items():
+            try:
+                message += '%s: %.4f ' % (k, v)
+            except TypeError as e:
+                # print('some wrong happened %s' % e)
+                message += '%s: %r ' % (k, list(v))
+        self.slide_test_msg_logger(message)
+
+    def record_metrics_message(self, message):
+        self.metrics_msg_logger(repr(message))
+
+    def record_loss_message(self, message):
+        self.loss_msg_logger(repr(message))
+
+    def record_test_metrics_message(self, message):
+        self.test_msg_logger(repr(message))
+
+    def record_slide_test_metrics_message(self, message):
+        self.slide_test_msg_logger(repr(message))
 
     def write_text(self, text):
         assert isinstance(text, str)
@@ -409,7 +439,10 @@ class Visualizer:
         save_name = os.path.join(self.visuals_dir, name+'visuals.h5')
         with h5py.File(save_name, mode='w') as fw:
             for name, image in visuals.items():
-                fw.create_dataset(name=name, data=image.clone().detach().cpu().numpy())
+                if isinstance(image, np.ndarray):
+                    fw.create_dataset(name=name, data=image)
+                else:
+                    fw.create_dataset(name=name, data=image.clone().detach().cpu().numpy())
 
     def close(self):
         if self.use_tensorboard:

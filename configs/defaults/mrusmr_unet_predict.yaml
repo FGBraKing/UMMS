@@ -1,0 +1,72 @@
+---
+# ---------------------------------------------------------------------------- #
+# basic
+# ---------------------------------------------------------------------------- #
+name : 'mrusmr128_fold0_bs2_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_3x300_0.6_2080Ti'
+phase : 'test'
+predict_name : 'whole'
+
+local_gpu : 2
+visible_gpu :  '0,1,2,3'
+# !!str "'0,''1,''2,''3,''4,''5,''6,''7'"
+
+revert : false
+save_visuals : False
+DEBUG : False
+verbose : false
+deterministic : True
+
+gpu_ids : [0,1]
+phase_list : ['test', 'val']
+# ---------------------------------------------------------------------------- #
+# data
+# ---------------------------------------------------------------------------- #
+# dataset
+dataset_name : 'mrusmr'
+fold : 'all'
+custom : true
+preprocess : 'none'
+#   'centercrop'
+#    'resize'
+#   'zoom_centercrop'
+crop_size : [128, 128, 112]
+target_size : [128, 128, 112]
+order_data: 3
+order_seg: 1
+scale : [0.8, 0.8, 0.8]
+# dataloader
+num_threads : 8
+batch_size : 1
+# ---------------------------------------------------------------------------- #
+# model
+# ---------------------------------------------------------------------------- #
+model_name : 'unet3d'
+input_nc : 1
+output_nc : 1
+init_channel_number : 16
+up_interpolate : False
+conv_order : 'crb'
+# ---------------------------------------------------------------------------- #
+# path
+# ---------------------------------------------------------------------------- #
+dataroot : './traces/datasets/MR-USviaFenster20-pre128'
+
+weight_path : './traces/checkpoints/mrusmr128_fold0_bs2_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_3x300_0.6_2080Ti/latest_net_mrusmr128_fold0_bs2_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_3x300_0.6_2080Ti.pth'
+weight_dir : './traces/checkpoints/mrusmr128_fold0_bs2_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_3x300_0.6_2080Ti'
+weight_on_dir : false
+
+logs_dir : './traces/logs'
+checkpoints_dir : './traces/checkpoints'
+results_dir : './traces/results'
+
+# ---------------------------------------------------------------------------- #
+# test
+# ---------------------------------------------------------------------------- #
+eval : True
+metric_names : ['basic_metrics', 'dice', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd']
+visual_names : ['segment', 'label', 'volume']
+
+
+# 'basic_metrics',
+...
+

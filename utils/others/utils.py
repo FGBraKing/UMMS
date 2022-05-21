@@ -8,12 +8,25 @@ import warnings
 import csv
 import time
 import datetime
-
 from collections import namedtuple
 from types import SimpleNamespace
 from functools import singledispatch
 from torchvision.utils import make_grid
 warnings.filterwarnings('ignore')
+
+
+def get_device_name():
+    device_name = torch.cuda.get_device_name()
+    if device_name == 'NVIDIA GeForce GTX 1080 Ti':
+        return '1080Ti'
+    elif device_name == 'NVIDIA GeForce RTX 2080 Ti':
+        return '2080Ti'
+    elif device_name == 'NVIDIA TITAN Xp':
+        return 'TITAN'
+    elif device_name == 'Tesla V100-DGXS-32GB':
+        return 'Tesla'
+    else:
+        return ''
 
 
 def make_divisible(v, divisor=8, min_value=None, round_limit=.9):
@@ -468,6 +481,66 @@ def get_gauusian_kernel_v2(shape):
 
         target = target_tmp if axis == 0 else np.swapaxes(target, 0, axis)
     return target
+
+
+# 用于训练时存储测试结果。存储最好的n个指标，以及数据的原始索引
+class DataPool(object):
+    def __init__(self, poolsize, min_data=0.5):
+        self.poolsize = poolsize
+        self.pure_data = set()
+        self.complete_data = []
+        self.init_min_data = min_data
+
+    def update(self, ind, data):
+        if len(self.pure_data) < self.poolsize:
+            if data > self.init_min_data:
+                self.pure_data.add(data)
+                self.complete_data.append({'ind': ind, 'data': data})
+                return True
+            else:
+                return False
+        else:
+            min_data = min(self.pure_data)
+            if data < min_data:
+                return False
+            elif data == min_data:
+                self.pure_data.add(data)
+                self.complete_data.append({'ind': ind, 'data': data})
+                return True
+            else:
+                self.pure_data.add(data)
+                self.complete_data.append({'ind': ind, 'data': data})
+                self.pure_data.remove(min_data)
+                self.remove_data(min_data)
+                return True
+
+    def remove_data(self, min_data):
+        if min_data in self.pure_data:
+            self.pure_data.remove(min_data)
+        for item in self.complete_data:
+            if item['data'] == min_data:
+                self.complete_data.remove(item)
+
+    def get_pure_data(self):
+        return tuple(self.pure_data)
+
+    def get_complete_data(self):
+        return self.complete_data
+
+    def get_best_data(self, last=True):
+        max_data = max(self.pure_data)
+        max_item = []
+        for item in self.complete_data:
+            if item['data'] == max_data:
+                max_item.append(item)
+        if last:
+            return max_item[-1]['ind'], max_item[-1]['data']
+        else:
+            return [a for a in map(lambda x:x['ind'], max_item)], max_item[-1]['data']
+
+    def reset(self):
+        self.pure_data.clear()
+        self.complete_data.clear()
 
 
 # --------------------------from https://github.com/lucidrains/stylegan2-pytorch/blob/master/stylegan2_pytorch/cli.py

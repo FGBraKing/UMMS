@@ -10,17 +10,17 @@ from .distribution_based.others import *
 from .region_based.dice_loss import BinaryDiceLoss, MutiClassDiceLoss
 from .region_based.iou_loss import IOULoss
 from .region_based.lovasz_loss import LovaszSoftmax
-from .region_based.tverskyloss import BinaryTverskyLoss, MultiTverskyLoss, FocalTverskyLoss, TverskyLoss
+from .region_based.tverskyloss import BinaryTverskyLoss, MultiTverskyLoss, FocalTverskyLoss
 
 from .generic_loss import *
 from .combo_loss import *
+from .custom_loss import *
 
 SUPPORTED_LOSSES = ['bdc', 'dc', 'bce', 'ce', 'wce', 'pce', 'asymmetric', 'b_focal', 'focal', 'jsd', 'l1', 'l2', 'mse',
-                    'lovasz', 'BinaryTversky', 'MultiTversky', 'tversky', 'combo', 'others']
+                    'lovasz', 'BinaryTversky', 'MultiTversky', 'tversky', 'combo', 'others', 'custom', 'custom_regular']
 
 
 # --------------------------------------------------------CUSTOM------------------------------------------------
-
 def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
     """
     :param name:
@@ -76,9 +76,10 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
     elif name == 'wce':
         if ignore_index is None:
             ignore_index = -100  # use the default 'ignore_index' as defined in the CrossEntropyLoss
-        return WeightedCrossEntropyLoss(weight=weight, ignore_index=ignore_index, reduction=reduction)
-    elif name == 'pce':
-        return PixelWiseCrossEntropyLoss(class_weights=weight, ignore_index=ignore_index)
+        # return WeightedCrossEntropyLoss(weight=weight, ignore_index=ignore_index, reduction=reduction)
+        return MutiClassCrossEntropyLoss(class_weight=weight, ignore_index=ignore_index, reduction=reduction)
+    # elif name == 'pce':
+    #     return PixelWiseCrossEntropyLoss(class_weights=weight, ignore_index=ignore_index)
     elif name == 'l1':
         return nn.L1Loss(reduction=reduction)
     elif name == 'l2' or name == 'mse':
@@ -123,8 +124,8 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
             activate = kwargs['activate']
         else:
             activate = 'sigmoid'
-        return TverskyLoss(alpha=alpha, beta=beta, ignore_index=ignore_index, reduction=reduction,
-                           smooth=smooth, normalization=activate)
+        return MultiTverskyLoss(alpha=alpha, beta=beta, ignore_index=ignore_index, reduction=reduction,
+                                smooth=smooth, normalization=activate)
     elif name == 'BinaryTversky':
         return BinaryTverskyLoss(alpha=alpha, beta=beta, ignore_index=ignore_index, reduction=reduction,
                                  use_sigmoid=True, smooth=smooth, eps=eps)
@@ -146,6 +147,13 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
 
         return BinaryDiceLoss(ignore_index=ignore_index, reduction=reduction,
                               use_batch=True, use_sigmoid=use_sigmoid, smooth=smooth, eps=eps)
+
+    elif name == 'custom':
+        return CustomLoss()
+
+    elif name == 'custom_regular':
+        return RegularLoss()
+
     else:
         if 'activate' in kwargs.keys():
             activate = kwargs['activate']

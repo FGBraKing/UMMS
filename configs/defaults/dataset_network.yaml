@@ -16,25 +16,28 @@
 dataroot : './traces/datasets/prostate_daf3d_pre'
 phase : 'train'
 fold : 0
-serial_batches : true
+#serial_batches : true
 custom : true
-preprocess : 'randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+preprocess : 'elastic_randomscale_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
 crop_size : [128, 128, 128]
 target_size : [128, 128, 128]
+#order_data: 3
+#order_seg: 1
+#elastic_alpha : [0., 900]
+#elastic_sigma : [9., 13.]
 #scale: [1, 1, 1]
-scale_range : [0.85, 1.25]
+#scale_range : [0.7, 1.3]
 rot_angle_spectrum: 30
 rot_axes: [0, 1, 2]
 mirror_axes: [0, 1, 2]
-g_noise_variance: [0.0, 0.1]
+#g_noise_variance: [0.0, 0.1]
+#blur_sigma : [0.5,1.5]
 #bright_mu : 0.0
 #bright_sigma : 0.1
-elastic_alpha : [0., 900]
-elastic_sigma : [9., 13.]
-#shift_mu : [0., 1000]
-#shift_sigma : [10., 13.]
-order_data: 3
-order_seg: 1
+#bright_multiplier_range: [0.7, 1.3]
+#contrast_range : [0.65, 1.35]
+#simulate_zoom_range : [0.5, 1]
+#gamma_range : [0.7, 1.3]
 # --dataloader
 batch_size : 1
 data_shuffle : true
@@ -50,9 +53,9 @@ init_channel_number : 32
 up_interpolate : False
 conv_order : 'crb'
 # --initialization
-init_type : 'kaiming'
-init_gain : 1.4142135623730951
-init_std : 0.02
+#init_type : 'kaiming'
+#init_gain : 1.4142135623730951
+#init_std : 0.02
 # ----------------------------------------------------------------------------------- #
 # 优化参数：包括优化器、学习率和损失函数等
 # ----------------------------------------------------------------------------------- #
@@ -86,14 +89,15 @@ warmup_prefix : True
 lr_cycle_mul : 1
 lr_cycle_decay : 0.75
 lr_cycle_limit : 5
-cooldown_epochs : 5
+lr_cycle_num : 4
+#cooldown_epochs : 10
 
-min_lr : 1e-8
+#min_lr : 1e-7
 decay_epochs : 100
 decay_rate : 0.2
-lr_k_decay : 1.0
-eval_metric : ''
-patience_epochs : 20
+#lr_k_decay : 1.0
+#eval_metric : ''
+#patience_epochs : 20
 # ---------------------------------------------------------------------------- #
 # 训练技巧，包括梯度累计、混合精度、多卡加速等
 # ---------------------------------------------------------------------------- #
@@ -179,7 +183,7 @@ test_preprocess : 'resize'
 # resize centercrop
 test_scale : [0.8, 0.8, 0.8]
 
-
+slide_test: True
 
 
 

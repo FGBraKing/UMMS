@@ -9,6 +9,7 @@ from sklearn.metrics import confusion_matrix
 from medpy.metric.binary import __surface_distances
 
 
+# TODO:在求metrics时先判断prerdict和target在全0、全1时候的判断
 # [N *]  [*]
 class BinaryMetrics:
     '''
@@ -23,7 +24,7 @@ class BinaryMetrics:
     def get_basic_metrics(self, predict, target, **kwargs):
         assert isinstance(predict, np.ndarray), 'prediction should be numpy.ndarray, but got{}'.format(type(predict))
         assert isinstance(target, np.ndarray), 'target should be numpy.ndarray, but got{}'.format(type(target))
-        assert predict.shape == target.shape  # N *
+        assert predict.shape == target.shape, "Shape mismatch: {} and {}".format(predict.shape, target.shape)  # N *
         if 'mode' in kwargs.keys():
             mode = kwargs['mode']
         else:
@@ -56,6 +57,22 @@ class BinaryMetrics:
             #         show_volume_label(predict, target, title='predict_target')
             return tp, fn, tn, fp
 
+    @staticmethod
+    def get_size(predict, target, **kwargs):
+        assert isinstance(predict, np.ndarray), 'prediction should be numpy.ndarray, but got{}'.format(type(predict))
+        assert isinstance(target, np.ndarray), 'target should be numpy.ndarray, but got{}'.format(type(target))
+        assert predict.shape == target.shape, "Shape mismatch: {} and {}".format(predict.shape, target.shape)  # N *
+        return int(np.prod(target.shape, dtype=np.int64))
+
+    def get_existence(self, predict, target, **kwargs):
+        predict = predict > self.threshold
+        target = target.astype(np.bool)
+        test_empty = not np.any(predict)
+        test_full = np.all(predict)
+        reference_empty = not np.any(target)
+        reference_full = np.all(target)
+        return test_empty, test_full, reference_empty, reference_full
+
     def get_accuracy(self, SR, GT, **kwargs):
         TP, FN, TN, FP = self.get_basic_metrics(SR, GT)
         return float(TP + TN) / (float(TP + TN + FN + FP) + self.eps)
@@ -77,6 +94,24 @@ class BinaryMetrics:
         predict = predict > self.threshold
         target = target.astype(np.bool)
         return metric.specificity(predict, target)
+
+    def get_false_discovery_rate(self, predict, target, **kwargs):
+        """FP / (TP + FP)"""
+        return 1 - self.get_precision(predict, target, **kwargs)
+
+    def get_false_omission_rate(self, predict, target, **kwargs):
+        TP, FN, TN, FP = self.get_basic_metrics(predict, target)
+        return float(FN) / (float(FN + TN) + self.eps)
+
+    def get_false_positive_rate(self, predict, target, **kwargs):
+        predict = predict > self.threshold
+        target = target.astype(np.bool)
+        return 1 - self.get_specificity1(predict, target, **kwargs)
+
+    def get_false_negative_rate(self, predict, target, **kwargs):
+        predict = predict > self.threshold
+        target = target.astype(np.bool)
+        return 1 - self.get_sensitivity(predict, target, **kwargs)
 
     def get_true_negative_rate(self, predict, target, **kwargs):
         predict = predict > self.threshold
@@ -373,7 +408,20 @@ class SoftMetrics:
         target = target.detach().cpu().numpy()
         result = result > 0.5
         target = target > 0.5
-        return torch.tensor(metric.hd(result, target, voxelspacing, connectivity), requires_grad=False).to(device)
+        if voxelspacing is not None and len(voxelspacing) > 1:
+            true_dim = len(voxelspacing)
+            true_shape = predict.shape[-true_dim:]
+
+            result = np.reshape(result, [-1]+list(true_shape))
+            target = np.reshape(target, [-1]+list(true_shape))
+            out = []
+            for i in range(predict.shape[0]):
+                out.append(metric.hd(result[i], target[i], voxelspacing, connectivity))
+            out = np.mean(out)
+        else:
+            out = metric.hd(result, target, voxelspacing, connectivity)
+
+        return torch.tensor(out, requires_grad=False).to(device)
 
     def get_hd95(self, predict, target, **kwargs):
         if 'voxelspacing' in kwargs.keys():
@@ -389,7 +437,19 @@ class SoftMetrics:
         target = target.detach().cpu().numpy()
         result = result > 0.5
         target = target > 0.5
-        return torch.tensor(metric.hd95(result, target, voxelspacing, connectivity), requires_grad=False).to(device)
+        if voxelspacing is not None and len(voxelspacing) > 1:
+            true_dim = len(voxelspacing)
+            true_shape = predict.shape[-true_dim:]
+
+            result = np.reshape(result, [-1]+list(true_shape))
+            target = np.reshape(target, [-1]+list(true_shape))
+            out = []
+            for i in range(predict.shape[0]):
+                out.append(metric.hd95(result[i], target[i], voxelspacing, connectivity))
+            out = np.mean(out)
+        else:
+            out = metric.hd95(result, target, voxelspacing, connectivity)
+        return torch.tensor(out, requires_grad=False).to(device)
 
     def get_assd(self, predict, target, **kwargs):
         if 'voxelspacing' in kwargs.keys():
@@ -406,7 +466,21 @@ class SoftMetrics:
         target = target.detach().cpu().numpy()
         result = result > 0.5
         target = target > 0.5
-        return torch.tensor(metric.assd(result, target, voxelspacing, connectivity), requires_grad=False).to(device)
+        if voxelspacing is not None and len(voxelspacing) > 1:
+            true_dim = len(voxelspacing)
+            true_shape = predict.shape[-true_dim:]
+            # now_dim = len(predict.shape)
+            # used_dim = list(range(now_dim-true_dim, now_dim))
+
+            result = np.reshape(result, [-1]+list(true_shape))
+            target = np.reshape(target, [-1]+list(true_shape))
+            out = []
+            for i in range(predict.shape[0]):
+                out.append(metric.assd(result[i], target[i], voxelspacing, connectivity))
+            out = np.mean(out)
+        else:
+            out = metric.assd(result, target, voxelspacing, connectivity)
+        return torch.tensor(out, requires_grad=False).to(device)
 
     def get_asd(self, predict, target, **kwargs):
         if 'voxelspacing' in kwargs.keys():
@@ -423,7 +497,19 @@ class SoftMetrics:
         target = target.detach().cpu().numpy()
         result = result > 0.5
         target = target > 0.5
-        return torch.tensor(metric.asd(result, target, voxelspacing, connectivity), requires_grad=False).to(device)
+        if voxelspacing is not None and len(voxelspacing) > 1:
+            true_dim = len(voxelspacing)
+            true_shape = predict.shape[-true_dim:]
+
+            result = np.reshape(result, [-1]+list(true_shape))
+            target = np.reshape(target, [-1]+list(true_shape))
+            out = []
+            for i in range(predict.shape[0]):
+                out.append(metric.asd(result[i], target[i], voxelspacing, connectivity))
+            out = np.mean(out)
+        else:
+            out = metric.asd(result, target, voxelspacing, connectivity)
+        return torch.tensor(out, requires_grad=False).to(device)
 
     def get_ravd(self, result, target, **kwargs):
         device = result.device

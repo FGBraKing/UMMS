@@ -2,15 +2,15 @@
 # ------------------------------------------------------------------------------------------------ #
 # modified
 # ------------------------------------------------------------------------------------------------ #
-name : 'mrusmr128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6'
+name : 'mrusus128_fold2_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6'
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
 # Tesla V100-DGXS-32GB\NVIDIA GeForce RTX 2080 Ti\NVIDIA GeForce GTX 1080 Ti\ NVIDIA TITAN Xp
 dataroot : './traces/datasets/MR-USviaFenster20-pre128'
-fold : 4
+fold : 2
 batch_size : 8
 
 gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
-visible_gpu : !!str "'2'"
+visible_gpu : !!str "'0'"
 DEBUG : False
 
 preprocess : 'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
@@ -146,7 +146,7 @@ dist_url : 'tcp://127.0.0.1:52001'
 # ---------------------------------------------------------------------------- #
 # --basic
 #name : 'mrusmr_unet3d_969632_bs12_ch32_kaiming_combo_1.0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
-dataset_name : 'mrusmr'
+dataset_name : 'mrusus'
 model_name : 'unet'
 #seed : 1008
 #gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]

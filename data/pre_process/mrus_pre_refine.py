@@ -27,7 +27,7 @@ import shutil
 import warnings
 
 
-# TODO: The following are not used
+#  The following are not used
 def translate_nii_to_ras(data_root=r'L:\DATA\temp_data\Formation__MR-USviaFenster20_MRI',
                          save_root=r'L:\DATA\temp_data\MR-USviaFenster20',
                          modal_flag='MR', label_flag='Prostate'):
@@ -149,10 +149,16 @@ def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape):
     tVol = resample_data_or_seg(tVol, t_temp_shape, False, do_separate_z=False, axis=None, order=3, order_z=1)
     tMask = resample_data_or_seg(tMask, t_temp_shape, True, do_separate_z=False, axis=None, order=1, order_z=0)
     # 裁剪到目标大小
+    # 旧裁剪
     # sVol, sMask = crop_img(sVol, sMask, aim_shape)
     # tVol, tMask = crop_img(tVol, tMask, aim_shape)
-    sVol, sMask = crop_img1(sVol[0], sMask[0], aim_shape)
-    tVol, tMask = crop_img1(tVol[0], tMask[0], aim_shape)
+    # 新裁剪
+    # sVol, sMask = crop_img1(sVol[0], sMask[0], aim_shape)
+    # tVol, tMask = crop_img1(tVol[0], tMask[0], aim_shape)
+    # 不裁剪
+    sVol, sMask = sVol[0], sMask[0]
+    tVol, tMask = tVol[0], tMask[0]
+
     # 归一化
     sVol = standardize(sVol, sVol.mean(), sVol.std())
     tVol = standardize(tVol, tVol.mean(), tVol.std())
@@ -281,7 +287,7 @@ def one_time_copy_datas_to_dirs(src_root=r'L:\DATA\temp_data\Formation__MR-USvia
 
 def main():
     dataroot = r'/home/lf/raid_lf/DATA/MR-USviaFenster20'
-    saveroot = r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre128'
+    saveroot = r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre128_ori'
     if not os.path.exists(saveroot):
         os.mkdir(saveroot)
     process_data(dataroot, saveroot, aim_shape=(128, 128, 112))

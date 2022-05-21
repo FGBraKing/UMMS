@@ -62,14 +62,40 @@ def plot_2d(x, y, *args, fig_title=None, ax_title=None, x_label=None, y_label=No
     plt.close(fig)
 
 
-if __name__ == '__main__':
-    logs_dir = r'/home/lf/data_fong/CODE/PycharmProject/DLForPytorch/traces/logs'
-    exp_name = r'mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
+def one_time_repair_metrics_file(file_name):
+    from utils.others.utils import DataPool
+    data_pat = re.compile(r'^.*epoch:\s*?(\d+).*-\d{1,2}.*?DC:\s*?(0\.\d+).*$')
 
-    metrics_file = os.path.join(logs_dir, exp_name, r'metrics_log.txt')
-    test_metrics_file = os.path.join(logs_dir, exp_name, r'test_metrics_log.txt')
+    datapool = DataPool(3, 0.80)
+    with open(file_name, 'r+') as f:
+        for line in f.readlines():
+            data = data_pat.match(line)
+            if data is not None:
+                epoch_str = data.groups()[0]
+                dc_str = data.groups()[1]
+                # print(epoch_str, dc_str)
+                datapool.update(int(epoch_str), float(dc_str))
+        f.write('\n')
+        f.writelines(repr(datapool.get_complete_data()))
+    print(repr(datapool.get_complete_data()))
+
+
+def main():
+    logs_dir = r'/home/lf/raid_lf/PROJECT/UMMS/traces/logs'
+    exp_name = r'mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_1.5_adam_2e-4_poly_3x300_0.6'
+
+    metrics_file = os.path.join(logs_dir, exp_name, r'metrics.txt')
+    test_metrics_file = os.path.join(logs_dir, exp_name, r'test_metrics.txt')
+    slide_metrics_file = os.path.join(logs_dir, exp_name, r'slide_test_metrics.txt')
 
     data_df = extract_metrics(metrics_file, dividually=True, interval=3, title='train data')
 
     test_data_df = extract_metrics(test_metrics_file, dividually=True, interval=3, title='test data')
 
+    slide_data_df = extract_metrics(slide_metrics_file, dividually=True, interval=3, title='slide data')
+
+
+if __name__ == '__main__':
+    # main()
+    testfile = r'/home/users/lf/data_lf/PROJECT/UMMS/traces/logs/mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_2x300_0.6_1080Ti/slide_test_metrics.txt'
+    one_time_repair_metrics_file(testfile)

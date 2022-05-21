@@ -73,12 +73,12 @@ def plot_2d(x, y, *args, fig_title=None, ax_title=None, x_label=None, y_label=No
 
 
 if __name__ == '__main__':
-    logsdir = r'/home/lf/data_fong/CODE/PycharmProject/DLForPytorch/traces/logs'
-    exp_name = r'mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
-    loss_name = r'loss_log.txt'
+    logsdir = r'/home/lf/raid_lf/PROJECT/UMMS/traces/logs'
+    exp_name = r'mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_1.5_adam_2e-4_poly_3x300_0.6'
+    loss_name = r'loss.txt'
 
     loss_file = os.path.join(logsdir, exp_name, loss_name)
-    extract_loss(loss_file, loss_name='seg', interval=5)
+    extract_loss(loss_file, loss_name='total', interval=5)
 
 
 

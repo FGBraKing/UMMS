@@ -13,10 +13,9 @@
 #    limitations under the License.
 from copy import deepcopy
 from multiprocessing.pool import Pool
-
 import numpy as np
-from scipy.ndimage import label
 import SimpleITK as sitk
+from scipy.ndimage import label
 from batchgenerators.utilities.file_and_folder_operations import *
 
 
@@ -43,6 +42,36 @@ def load_remove_save(input_file: str, output_file: str, for_which_classes: list,
     img_out_itk = copy_geometry(img_out_itk, img_in)
     sitk.WriteImage(img_out_itk, output_file)
     return largest_removed, kept_size
+
+
+#  minimum_valid_object_size:40
+def retain_the_largest_connected_component_binary(volume, volume_per_voxel, minimum_valid_object_size=None):
+    kept_size = None
+    largest_removed = None
+
+    mask = volume != 0
+    lmap, num_objects = label(mask.astype(int))
+
+    object_sizes = {}
+    for object_id in range(1, num_objects + 1):
+        object_sizes[object_id] = (lmap == object_id).sum() * volume_per_voxel
+
+    if num_objects > 0:
+        maximum_size = max(object_sizes.values())
+        kept_size = maximum_size
+        for object_id in range(1, num_objects + 1):
+            if object_sizes[object_id] != maximum_size:
+                if minimum_valid_object_size is not None:
+                    remove = object_sizes[object_id] < minimum_valid_object_size
+                else:
+                    remove = True
+                if remove:
+                    volume[(lmap == object_id) & mask] = 0
+                    if largest_removed is None:
+                        largest_removed = object_sizes[object_id]
+                    else:
+                        largest_removed = max(largest_removed, object_sizes[object_id])
+    return volume, kept_size, largest_removed
 
 
 def remove_all_but_the_largest_connected_component(image: np.ndarray,

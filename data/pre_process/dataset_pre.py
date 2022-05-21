@@ -86,7 +86,7 @@ class DatasetPre(ABC):
             img_warp = self._process_img(img, transform)
             label = self._process_img(label, transform)
 
-            # TODO need to be modified when type change
+            # need to be modified when type change
             patient_name = os.path.basename(patient['image']).split('.')[0]
             self._save_img(save_dir, patient_name, img_warp, label,
                            img_info=img_info, label_info=label_info, mode=save_type)

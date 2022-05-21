@@ -38,6 +38,7 @@ class TanhLRScheduler(Scheduler):
                  noise_pct=0.67,
                  noise_std=1.0,
                  noise_seed=42,
+                 k_decay=1.0,
                  initialize=True) -> None:
         super().__init__(
             optimizer, param_group_field="lr",
@@ -61,6 +62,7 @@ class TanhLRScheduler(Scheduler):
         self.warmup_lr_init = warmup_lr_init
         self.warmup_prefix = warmup_prefix
         self.t_in_epochs = t_in_epochs
+        self.k_decay = k_decay
         if self.warmup_t:
             t_v = self.base_values if self.warmup_prefix else self._get_lr(self.warmup_t)
             self.warmup_steps = [(v - warmup_lr_init) / self.warmup_t for v in t_v]
@@ -84,11 +86,13 @@ class TanhLRScheduler(Scheduler):
                 t_i = self.t_initial
                 t_curr = t - (self.t_initial * i)
 
+            k = self.k_decay
+
             if i < self.cycle_limit:
                 gamma = self.cycle_decay ** i
                 lr_max_values = [v * gamma for v in self.base_values]
 
-                tr = t_curr / t_i
+                tr = t_curr ** k / t_i ** k
                 lrs = [
                     self.lr_min + 0.5 * (lr_max - self.lr_min) * (1 - math.tanh(self.lb * (1. - tr) + self.ub * tr))
                     for lr_max in lr_max_values

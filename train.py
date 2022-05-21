@@ -4,20 +4,23 @@ import time
 import logging
 import numpy as np
 import torch.distributed
+from pprint import pprint
 
-from data import create_dataset, create_test_dataset
+from data import create_dataset, create_test_dataset, create_slide_test_dataset
 from models import create_model
 from utils.forLogs import Visualizer, get_logger
-from utils.others.utils import init_seed, init_torch, print_numpy, mkdirs
+from utils.others.utils import init_seed, init_torch, print_numpy, mkdirs, DataPool, get_device_name
 from utils.others.distributed_utils import record_distribute_ddp, torch_distributed_zero_first
 from utils.others.img_io import show_image, show_paired_image
 from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict
 from configs.simple_options import get_opt
-from pprint import pprint
 from configs.utils_config import pretty_print_opt, get_pretty_opt
 from matplotlib import pyplot as plt
 # import matplotlib
 # matplotlib.use('TKAgg')
+
+save_threshold = 0.70
+pool_size = 3
 
 
 # 不能用两层映射，在DDP的时候，rank=1，必须用device号也为1的gpu；否则会阻塞不动。。。。。。
@@ -48,18 +51,18 @@ def train():
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
     assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
 
+    device_name = get_device_name()
+    opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
+
     do_train(opt)
 
 
-# TODO: 1.实现训练中测试  2.保存test和predict中各自最好的10个模型。3.保存在训练集中效果最好的10个模型
 def do_train(opt):
     print('now is in do_train, if you are using DDP, please make sure that '
           'you had got (dist_backend, dist_url, world_size, rank, local_rank) ready')
     print('CUDA_VISIBLE_DEVICES: '+os.environ['CUDA_VISIBLE_DEVICES'])
 
-    # fig_list = [plt.figure(i) for i in range(40)]
-
-    # 修补一个参数不能PicklingError的bug
+    # ====================================================配置gpu等全局变量==============================================
     opt.random_state = np.random.RandomState(seed=opt.seed)
 
     # print(torch.cuda.is_available())
@@ -95,14 +98,13 @@ def do_train(opt):
         opt_logger = get_logger(logname='opt_logger', level=logging.WARNING, is_save=False, fmt="%(message)s")
     opt_logger.info(get_pretty_opt(opt))
 
-    # setting ddp_logger
     ddp_logger = get_logger(logname='ddp_logger', level=logging.INFO if on_master else logging.WARNING, is_save=False,
                             fmt="[%(process)d][%(filename)s][%(funcName)s]%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
     time_logger = get_logger(logname='time_logger', level=logging.INFO if on_master else logging.WARNING, is_save=False,
                              fmt="[%(process)d]%(message)s")    # [%(thread)d]
 
-    # ddp_logger.warning(get_pretty_opt(opt))
+    # ========================================数据,模型,初始化、优化器、学习率策略========================================
 
     dataloader = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
     dataset_size = len(dataloader)    # get the number of images in the dataset.
@@ -113,12 +115,16 @@ def do_train(opt):
     test_dataset_size = len(test_dataloader)
     ddp_logger.warning('The number of testing images = %d' % test_dataset_size)
 
+    test_slide_dataset = create_slide_test_dataset(opt)
+    test_slide_dataset_size = len(test_slide_dataset)
+    ddp_logger.warning('The number of testing patient = %d' % test_slide_dataset_size)
+
     model = create_model(opt)      # create a model given opt.model and other options
     model.setup(opt)               # regular setup: load and print networks
     ddp_logger.warning('model get ready')
 
     if opt.lr_policy in ['poly', 'tanh', 'cosine']:
-        opt.num_epochs = model.get_schedulers()[0].get_cycle_length() + opt.cooldown_epochs
+        opt.num_epochs = model.get_schedulers()[0].get_cycle_length(opt.lr_cycle_num) + opt.cooldown_epochs   # 更正num_epochs
 
     optimize_parameters = model.optimize_parameters_with_apex if opt.APEX else model.optimize_parameters
     save_networks = model.save_for_apex if opt.APEX else model.save_networks
@@ -142,13 +148,13 @@ def do_train(opt):
     else:
         opt.gradient_accumulation_k_step = 1
 
+    # ==================================================开始训练=======================================================
     ddp_logger.warning('start training! on local_rank:{}'.format(opt.local_rank))
 
     total_iters = 0                # the total number of training iterations
-    std_test_metrics_dice = 0.85
-    now_test_metrics_dice = 0.0
-    best_test_metrics_dice = 0.0
-    best_test_metrics_epoch = 0.0
+    slide_test_pool = DataPool(pool_size, save_threshold)
+    predict_pool = DataPool(pool_size, save_threshold)
+
     for epoch in range(opt.epoch_start, opt.num_epochs + 1):
         if epoch == 1 and opt.continue_train is False and opt.DDP is True:
             # 因为DDP封装时似乎会保证各进程状态相同，所以这个部分似乎可以不用，但用了也问题不大。
@@ -165,20 +171,17 @@ def do_train(opt):
 
         epoch_start_time = time.time()
 
-        # 更新dataloader的seed和优化器的学习率
         if not opt.serial_batches:
-            dataloader.set_epoch(epoch)
-        model.update_learning_rate(epoch)   # update learning rates in the beginning/ending of every epoch.
-
-        model.zero_grad_optimizers()
+            dataloader.set_epoch(epoch)     # 更新dataloader的seed
+        model.update_learning_rate(epoch)   # 更新学习率
+        model.zero_grad_optimizers()        # 清零参数梯度
 
         # torch.cuda.synchronize()
         time_logger.info('Time epoch prepare: %d sec' % (time.time() - epoch_start_time))
-        # 训练一个epoch
+        # ++++++++++++++++++++++++++++++++++++++++++++++训练一个epoch+++++++++++++++++++++++++++++++++++++++++++
         epoch_iter = 0
         iter_data_time = time.time()
         for batch_idx, data in enumerate(dataloader, 1):
-            # torch.cuda.synchronize()
             iter_start_time = time.time()
 
             total_iters += opt.batch_size
@@ -188,19 +191,18 @@ def do_train(opt):
             optimize_parameters(batch_idx % opt.gradient_accumulation_k_step == 0)
             # 计算当前训练数据的metrics、losses、lrs， 使用visualizer绘图并打印
             if total_iters % opt.print_freq == 0 or total_iters % opt.plot_freq == 0:
-                # 因为要reduce结果，所以全部进程都要进行计算
                 # torch.cuda.synchronize()
                 t_data = iter_start_time - iter_data_time
                 t_comp = (time.time() - iter_start_time) / opt.batch_size
 
-                model.compute_metrics()         # done reduce
-                metrics = model.get_current_metrics()      # done reduce
+                model.compute_metrics()                     # 因为要reduce结果，所以全部进程都要进行计算
+                metrics = model.get_current_metrics()       # 因为要reduce结果，所以全部进程都要进行计算
                 # print(str(metrics).replace('basic_metrics', 'tp fn tn fp'))
 
-                losses = model.get_current_losses()   # done reduce
+                losses = model.get_current_losses()         # 因为要reduce结果，所以全部进程都要进行计算
 
                 if on_master:
-                    lrs = model.get_current_lrs()   # 学习率不需要reduce
+                    lrs = model.get_current_lrs()           # 学习率不需要reduce
 
                     if total_iters % opt.print_freq == 0:
                         visualizer.print_current_losses(epoch, epoch_iter, losses, t_comp, t_data)
@@ -258,7 +260,7 @@ def do_train(opt):
                     if opt.save_visuals:
                         with torch_distributed_zero_first(opt.local_rank):
                             if opt.save_only_latest:
-                                name = 'latest'
+                                name = 'latest-train'
                                 visualizer.save_visuals(visuals, name)
                             elif total_iters % opt.save_visuals_frep == 0:
                                 # name = 'epoch-{}-epoch_iter-{}'.format(epoch, epoch_iter)
@@ -288,126 +290,147 @@ def do_train(opt):
                     save_suffix = 'iter_%d' % total_iters if opt.save_by_iter else 'latest'
                     save_networks(save_suffix)
 
-            # 这里似乎并不需要同步
-            # if opt.DDP:
-            #     torch.distributed.barrier()
-            # torch.cuda.synchronize()
             iter_data_time = time.time()
 
-        # torch.cuda.synchronize()
         time_logger.info('Time all iteration on epoch Taken: %d sec' % (time.time() - epoch_start_time))
 
-        # 用测试数据测试当前epoch训练完后的模型性能
-        if opt.test_on_train and epoch % opt.val_epoch_freq == 0:
-            ddp_logger.info('Test start of epoch %d / %d \t' % (epoch, opt.num_epochs))
+        # ++++++++++++++++++++++++++++++++++++用测试数据测试当前epoch的模型+++++++++++++++++++++++++++++++++++++++
+        if opt.test_on_train:
+            if epoch % opt.val_epoch_freq == 0 and epoch > 1:
+                ddp_logger.info('Test start of epoch %d / %d \t' % (epoch, opt.num_epochs))
 
-            test_start_time = time.time()
-            if opt.eval:
-                model.eval()
+                test_start_time = time.time()
+                if opt.eval:
+                    model.eval()
 
-            test_metrics_all = []
-            for test_batch_idx, test_data in enumerate(test_dataloader):
-                if test_batch_idx==3:
-                    print('now')
-                model.set_input(test_data)
-                model.test()
+                test_metrics_all = []
+                for test_batch_idx, test_data in enumerate(test_dataloader):
+                    # if test_batch_idx == 3:
+                    #     print('now')
+                    model.set_input(test_data)
+                    model.test()
 
-                test_metrics = model.get_current_metrics()
-                test_visuals = model.get_current_visuals()
-                test_metrics_all.append(test_metrics)
+                    test_metrics = model.get_current_metrics()
+                    test_visuals = model.get_current_visuals()
+                    test_metrics_all.append(test_metrics)
 
-                if on_master:
-                    visualizer.print_current_test_metrics(test_metrics, epoch, test_batch_idx)
-                    visualizer.plot_current_losses(0, 0, test_metrics, test_batch_idx,
-                                                   tag='test metrics over paitent')
-                    if opt.DEBUG and test_batch_idx == 1 and epoch == 1:
-                        pass
-                        # pprint(test_data['volume_path'])
-                        # volume = test_visuals['volume']
-                        # label = test_visuals['label']
-                        # predict = test_visuals['predict']
-                        # volume_name = os.path.basename(test_data['volume_path'][0]).split('.')[0]
-                        #
-                        # test_volume = volume[0, 0].clone().detach().cpu().numpy()
-                        # test_label = label[0, 0].clone().detach().cpu().numpy()
-                        # test_predict = predict[0, 0].clone().detach().cpu().numpy()
-                        #
-                        # print('{:*^100}'.format(' test volume'))
-                        # print_numpy(test_volume, shp=False)
-                        # # print('test_label')
-                        # print_numpy(test_label, shp=False)
-                        # # print('test_predict')
-                        # print_numpy(test_predict, shp=False)
-                        #
-                        # # show_volume_label(test_volume, test_label, row=4, col=4, title=f'test one {volume_name}')
-                        # #
-                        # # show_volume_label(test_label, test_predict, row=4, col=4, title=f'test two {volume_name}')
+                    if on_master:
+                        visualizer.print_current_test_metrics(test_metrics, epoch, test_batch_idx)
+                        visualizer.plot_current_losses(0, 0, test_metrics, test_batch_idx,
+                                                       tag='test metrics over paitent')
+                        if opt.DEBUG and test_batch_idx == 1 and epoch == 1:
+                            pass
+                            # pprint(test_data['volume_path'])
+                            # volume = test_visuals['volume']
+                            # label = test_visuals['label']
+                            # predict = test_visuals['predict']
+                            # volume_name = os.path.basename(test_data['volume_path'][0]).split('.')[0]
+                            #
+                            # test_volume = volume[0, 0].clone().detach().cpu().numpy()
+                            # test_label = label[0, 0].clone().detach().cpu().numpy()
+                            # test_predict = predict[0, 0].clone().detach().cpu().numpy()
+                            #
+                            # print('{:*^100}'.format(' test volume'))
+                            # print_numpy(test_volume, shp=False)
+                            # # print('test_label')
+                            # print_numpy(test_label, shp=False)
+                            # # print('test_predict')
+                            # print_numpy(test_predict, shp=False)
+                            #
+                            # # show_volume_label(test_volume, test_label, row=4, col=4, title=f'test one {volume_name}')
+                            # #
+                            # # show_volume_label(test_label, test_predict, row=4, col=4, title=f'test two {volume_name}')
 
-                    if opt.save_visuals:
-                        with torch_distributed_zero_first(opt.local_rank):
+                        if opt.save_visuals:
+                            with torch_distributed_zero_first(opt.local_rank):
+                                if opt.save_only_latest:
+                                    name = 'latest-test'
+                                    visualizer.save_visuals(test_visuals, name)
+                                elif total_iters % opt.save_visuals_frep == 0:
+                                    # name = 'epoch-{}-epoch_iter-{}'.format(epoch, epoch_iter)
+                                    name = 'epoch-{}-epoch_iter-{}-test'.format(epoch, epoch_iter)
+                                    visualizer.save_visuals(test_visuals, name)
+
+                        if opt.display_on_tensorboard:
+                            for name, image in test_visuals.items():
+                                if image.ndim == 5:  # N C D H W
+                                    N, C, D, H, W = image.shape
+                                    for c in range(C):
+                                        for d in range(D):
+                                            for n in range(N):
+                                                visualizer.show_current_images({name+'N:{} C:{} D:{}'.format(n, c, d): image[n, c, d]}, epoch, suffix=' on test')
+
+                now_test_metrics = combine_metrics(test_metrics_all)
+
+                ddp_logger.info('Predict end of epoch %d / %d \t Time Taken: %d sec'
+                                % (epoch, opt.num_epochs, time.time() - test_start_time))
+
+                if not opt.DDP and opt.slide_test:
+                    slide_metrics_all = []
+                    for slide_idx, slide_data in enumerate(test_slide_dataset):
+                        # volume_name = os.path.basename(slide_data['volume_path']).split('.')[0]
+                        model.slide_test(slide_data)
+                        slide_metrics = model.get_current_metrics()
+                        slide_visuals = model.get_current_visuals()
+                        slide_metrics_all.append(slide_metrics)
+                        visualizer.print_current_slide_test_metrics(slide_metrics, epoch, slide_idx)
+                        if opt.save_visuals:
                             if opt.save_only_latest:
-                                name = 'latest-test'
-                                visualizer.save_visuals(test_visuals, name)
+                                name = 'latest-slide'
+                                visualizer.save_visuals(slide_visuals, name)
                             elif total_iters % opt.save_visuals_frep == 0:
                                 # name = 'epoch-{}-epoch_iter-{}'.format(epoch, epoch_iter)
-                                name = 'epoch-{}-epoch_iter-{}-test'.format(epoch, epoch_iter)
-                                visualizer.save_visuals(test_visuals, name)
+                                name = 'epoch-{}-epoch_iter-{}-slide'.format(epoch, epoch_iter)
+                                visualizer.save_visuals(slide_visuals, name)
+                    # print(slide_metrics_all)
+                    now_slide_metrics = combine_metrics(slide_metrics_all)
+                else:
+                    now_slide_metrics = None
 
-                    if opt.display_on_tensorboard:
-                        for name, image in test_visuals.items():
-                            if image.ndim == 5:  # N C D H W
-                                N, C, D, H, W = image.shape
-                                for c in range(C):
-                                    for d in range(D):
-                                        for n in range(N):
-                                            visualizer.show_current_images({name+'N:{} C:{} D:{}'.format(n, c, d): image[n, c, d]}, epoch, suffix=' on test')
+                if on_master:
+                    visualizer.print_current_test_metrics(now_test_metrics, epoch, -5)
+                    visualizer.plot_current_losses(0, 0, now_test_metrics, epoch, tag='test metrics over epoch')
 
-            now_test_metrics = combine_metrics(test_metrics_all)
-            now_test_metrics_dice = now_test_metrics['DC']
-            if now_test_metrics_dice > best_test_metrics_dice:
-                best_test_metrics_epoch = epoch
-                best_test_metrics_dice = now_test_metrics_dice
+                    if now_slide_metrics:
+                        visualizer.print_current_slide_test_metrics(now_slide_metrics, epoch, -10)
 
-            if on_master:
-                visualizer.print_current_test_metrics(now_test_metrics, epoch, -1)
-                visualizer.plot_current_losses(0, 0, now_test_metrics, epoch,
-                                               tag='test metrics over epoch')
+                    save_for_predict = predict_pool.update(epoch, now_test_metrics['DC'])
+                    save_for_test = now_slide_metrics and slide_test_pool.update(epoch, now_slide_metrics['DC'])
 
-            model.train()
+                    if save_for_predict or save_for_test:  # 根据需要保存optimizer和apex的state_dict
+                        ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+                        save_networks('latest')
+                        save_networks(epoch)
+                        visualizer.add_text(opt.name, f'saving checkpoint on {epoch}', total_iters)
 
-            # 这里似乎并不需要同步
-            # if opt.DDP:
-            #     torch.distributed.barrier()
-            # torch.cuda.synchronize()
-            ddp_logger.info('Test end of epoch %d / %d \t Time Taken: %d sec'
-                            % (epoch, opt.num_epochs, time.time()-test_start_time))
+                model.train()
 
-        # torch.cuda.synchronize()
+                ddp_logger.info('Test end of epoch %d / %d \t Time Taken: %d sec'
+                                % (epoch, opt.num_epochs, time.time()-test_start_time))
+        elif on_master and epoch > opt.save_epoch_start and (epoch-opt.save_epoch_start) % opt.save_epoch_freq == 0:
+            # cache our model every <save_epoch_freq> epochs
+            ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+            save_networks('latest')
+            save_networks(epoch)
+            visualizer.add_text(opt.name, f'saving checkpoint on {epoch}', total_iters)
+
         ddp_logger.info('End of epoch %d / %d \t Time Taken: %d sec' %
                         (epoch, opt.num_epochs, time.time() - epoch_start_time))
 
-        # 按照epoch保存checkpoint
-        # 根据需要保存optimizer和apex的state_dict
-        if on_master:
-            if epoch > 500:
-                if now_test_metrics_dice >= best_test_metrics_dice:
-                    ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
-                    save_networks('latest')
-                    save_networks(epoch)
-                    visualizer.add_text(opt.name, f'saving checkpoint on {epoch}', total_iters)
-            elif (now_test_metrics_dice > std_test_metrics_dice) \
-                    and (epoch > opt.save_epoch_start and (epoch-opt.save_epoch_start) % opt.save_epoch_freq == 0):
-                # cache our model every <save_epoch_freq> epochs
-                ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
-                save_networks('latest')
-                save_networks(epoch)
-                visualizer.add_text(opt.name, f'saving checkpoint on {epoch}', total_iters)
+    if on_master:
+        ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (opt.num_epochs, total_iters))
+        save_networks('latest')
+        save_networks(opt.num_epochs)
+        visualizer.add_text(opt.name, f'saving checkpoint on {opt.num_epochs}', total_iters)
 
     ddp_logger.info('end training!')
+    best_test_metrics_epoch, best_test_metrics_dice = predict_pool.get_best_data()
     opt_logger.info(f'best_test_metrics_epoch: {best_test_metrics_epoch}\n'
                     f'best_test_metrics_dice: {best_test_metrics_dice}')
-
     if visualizer:
+        visualizer.record_test_metrics_message(predict_pool.get_complete_data())
+        if not opt.DDP:
+            visualizer.record_slide_test_metrics_message(slide_test_pool.get_complete_data())
         visualizer.close()
     ddp_logger.info('visualizer closed!')
 
@@ -416,7 +439,9 @@ def do_train(opt):
         torch.distributed.barrier()
         torch.distributed.destroy_process_group()
 
-    sys.exit(0)
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+    return
+    # sys.exit(0)
 
 
 def combine_metrics(metrics_list):
@@ -439,7 +464,9 @@ def combine_metrics(metrics_list):
 
 
 if __name__ == '__main__':
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
     train()
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
 
 
 #

@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.nn.functional import l1_loss, mse_loss
 
-from .region_based.dice_loss import dice_loss
+from .region_based.dice_loss import diceloss
 
 
 # -------------------------------------------------------Function--------------------------------------------------
@@ -121,7 +121,7 @@ def vae_loss(predicted_x, mu, logvar, x, recon_loss=mse_loss, divergence_loss=kl
     return recon_weight * loss_recon + kl_weight * loss_kl
 
 
-def vae_dice_loss(predicted, mu, logvar, target, loss=dice_loss, divergence_loss=kl_loss, weight=1, kl_weight=1):
+def vae_dice_loss(predicted, mu, logvar, target, loss=diceloss, divergence_loss=kl_loss, weight=1, kl_weight=1):
     return vae_loss(predicted_x=predicted, mu=mu, logvar=logvar, x=target, recon_loss=loss,
                     divergence_loss=divergence_loss, recon_weight=weight, kl_weight=kl_weight)
 

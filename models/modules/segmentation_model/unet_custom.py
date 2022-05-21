@@ -172,7 +172,7 @@ class OutConv(nn.Module):
 
 class UnetCustom(nn.Module):
     def __init__(self, norm_type, in_channels, n_class,
-                 deptp=4, init_channel_number=64, final_sigmoid=False):
+                 deptp=4, init_channel_number=16, final_sigmoid=False):
         super(UnetCustom, self).__init__()
         f_maps = [init_channel_number*2**x for x in range(deptp + 1)]
         self.in_conv = InConv(norm_type, in_channels, f_maps[0])

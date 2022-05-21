@@ -3,13 +3,15 @@
 优化版本，可以完整使用gpu_ids.也可以从script直接运行DDP
 '''
 import os
+import time
 import torch.multiprocessing as mp
 
 from train import do_train as do_train_single
 from train_multi import do_train as do_train_multi
 from configs.simple_options import get_opt
-from utils.others.utils import init_seed, init_torch
+from utils.others.utils import init_seed, init_torch, get_device_name
 # from configs.options.dataset_network import ProjectOptions
+from argparse import ArgumentParser, REMAINDER, ZERO_OR_MORE, OPTIONAL
 
 
 # 维护rank, local_rank, world_size, init_method, backend
@@ -45,6 +47,8 @@ def train_single(ind, *args):
     opt = args[0]
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
+    device_name = get_device_name()
+    opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
 
     opt = correct_dist_args(ind, opt)
 
@@ -67,6 +71,8 @@ def train_multi(ind, *args):
     opt = args[0]
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
+    device_name = get_device_name()
+    opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
 
     opt = correct_dist_args(ind, opt)
 
@@ -101,16 +107,20 @@ def train_ddp(args, train_fn):
                          ' but got [] of {}'.format(repr(args.gpu_ids)))
 
 
-def main():
+def main(config_name, sleep_sec=10):
     # opt = ProjectOptions().parse(True)   # get training options
     # opt = get_opt(args=None)
     # opt = get_opt(args=['--config_path=configs/defaults/mrusmr_unet_train.yaml', '--use_config'])
-    opt = get_opt(args=['--config_path=configs/defaults/ummkd_train.yaml', '--use_config'])
+    opt = get_opt(args=[f'--config_path=configs/defaults/{config_name}.yaml', '--use_config'])
     # opt = get_opt(args=['--config_path=configs/defaults/promise12_unet3d.yaml', '--use_config'])
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml', '--use_config'])
     print('option get ready')
 
     train = train_single if opt.single else train_multi
+
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+    time.sleep(sleep_sec)
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
 
     if opt.DDP:
         train_ddp(opt, train)
@@ -119,7 +129,15 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = ArgumentParser(description="Project's useful tool to parse args")
+    # rest from the training program
+    # local_rank, is suitable to distrubute.launch
+    parser.add_argument('--config_name', type=str, default='mrusus_unet_train', help='the name of config')
+    parser.add_argument('second', type=int, default=10, help='wait some second and then run')
+    parser.add_argument('training_script_args', nargs=REMAINDER, help='training_script_args')
+    args = parser.parse_args()
+    main(args.config_name, args.second)
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
 
     # # using environment variables to initialize or not in DDP
     # warnings.warn('you are trying to use environment variables to initialize the DDP, please try to use the utils '

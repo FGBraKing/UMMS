@@ -2,18 +2,18 @@
 # ------------------------------------------------------------------------------------------------ #
 # modified
 # ------------------------------------------------------------------------------------------------ #
-name : 'mrusmr128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6'
+name : 'mrusmr128_fold0_bs3_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6'
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
 # Tesla V100-DGXS-32GB\NVIDIA GeForce RTX 2080 Ti\NVIDIA GeForce GTX 1080 Ti\ NVIDIA TITAN Xp
 dataroot : './traces/datasets/MR-USviaFenster20-pre128'
-fold : 4
-batch_size : 8
+fold : 0
+batch_size : 3
 
 gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
 visible_gpu : !!str "'2'"
 DEBUG : False
 
-preprocess : 'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+preprocess : 'elastic_randomscale_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
 
 init_channel_number : 16
 conv_order : 'cbl'
@@ -21,10 +21,10 @@ conv_order : 'cbl'
 loss_opt : 'using custom, 1*bdc+1*bce, pos-weight=2, 2e-4_l2'
 
 optimizer_name : 'adam'
-lr : 2e-4
+lr : 5e-5
 
 lr_policy : 'poly'
-lr_cycle_num : 2
+lr_cycle_num : 3
 lr_cycle_decay : 0.6
 
 num_epochs : 300
@@ -46,8 +46,8 @@ phase : 'train'
 #serial_batches : true
 # preprocess : 'randomcrop_centercrop_rot90_mirror'
 custom : true
-crop_size : [96, 96, 80]
-target_size : [96, 96, 80]
+crop_size : [128, 128, 112]
+target_size : [128, 128, 112]
 #order_data: 3
 #order_seg: 1
 #elastic_alpha : [0., 70]
@@ -110,7 +110,7 @@ lr_noise : ~
 lr_noise_pct : 0.67
 lr_noise_std : 1.
 
-warmup_lr : 1e-5
+warmup_lr : 1e-6
 warmup_epochs : 20
 warmup_prefix : True
 
@@ -201,9 +201,9 @@ eval : True
 test_data_phase : 'test'
 
 test_batchsize : 1
-test_preprocess : 'centercrop'
+test_preprocess : ''
 
-slide_test: true
+slide_test: false
 slide_test_batchsize : 8
 # test_scale : [0.8, 0.8, 0.8]
 # resize centercrop

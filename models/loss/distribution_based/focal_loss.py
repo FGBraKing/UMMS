@@ -4,10 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-# [N, *]
-# from https://github.com/Hsuxu/Loss_ToolBox-PyTorch/blob/master/seg_loss/focal_loss.py
-# 二进制FL，不支持smooth_target
+# [N, *], # 二进制FL
 class BinaryFocalLoss(nn.Module):
+    # from https://github.com/Hsuxu/Loss_ToolBox-PyTorch/blob/master/seg_loss/focal_loss.py
     """
     This is a implementation of Focal Loss with smooth label cross entropy supported which is proposed in
     'Focal Loss for Dense Object Detection. (https://arxiv.org/abs/1708.02002)'
@@ -19,42 +18,50 @@ class BinaryFocalLoss(nn.Module):
     :param **kwargs
         balance_index: (int) balance class index, should be specific when alpha is float
     """
-
-    def __init__(self, alpha=3, gamma=2, ignore_index=None, reduction='mean', smooth=1e-6):
+    def __init__(self, alpha=3, gamma=2, ignore_index=None, reduction='mean', smooth=0.1, eps=1e-7):
         super(BinaryFocalLoss, self).__init__()
+        assert reduction in ['none', 'mean', 'sum']
         self.alpha = alpha
         self.gamma = gamma
+        self.eps = eps
         self.smooth = smooth  # set '1e-4' when train with FP16
         self.ignore_index = ignore_index
         self.reduction = reduction
 
-        assert self.reduction in ['none', 'mean', 'sum']
-
     def forward(self, output, target):
-        prob = torch.sigmoid(output)
-        prob = torch.clamp(prob, self.smooth, 1.0 - self.smooth)
+        assert output.shape[0] == target.shape[0], "output & target batch size don't match"
 
-        pos_mask = (target == 1).float()        # q
-        neg_mask = (target == 0).float()        # 1-q
+        pos_mask = (target == 1).float()  # q
+        neg_mask = (target == 0).float()  # 1-q
         if self.ignore_index is not None:
             valid_mask = (target != self.ignore_index).float()
             pos_mask = pos_mask * valid_mask
             neg_mask = neg_mask * valid_mask
 
+        prob = torch.sigmoid(output)
+        prob = torch.clamp(prob, self.eps, 1.0 - self.eps)        # avoid `nan` loss
+        target = torch.clamp(target.float(), min=self.smooth, max=1.0 - self.smooth)  # soft label
+
         pos_weight = (pos_mask * torch.pow(1 - prob, self.gamma)).detach()
-        pos_loss = -pos_weight * torch.log(prob)
+        pos_loss = -pos_weight * target * torch.log(prob)
 
         neg_weight = (neg_mask * torch.pow(prob, self.gamma)).detach()
-        # neg_loss = -self.alpha * neg_weight * F.logsigmoid(-output)
-        neg_loss = -self.alpha * neg_weight * torch.log(1-prob)     # sigmoid(x) -1 是奇函数，sigmoid(-x)+sigmoid(x)=1
-        loss = pos_loss + neg_loss
+        neg_loss = -neg_weight * (1.0 - target) * torch.log(1-prob)   # sigmoid(x) -1 是奇函数，sigmoid(-x)+sigmoid(x)=1
+        loss = self.alpha * pos_loss + neg_loss     # (N, *)
 
+        if self.reduction == 'mean':
+            loss = torch.mean(loss)
+        elif self.reduction == 'sum':
+            loss = torch.sum(loss)
+        elif self.reduction == 'none':
+            loss = loss
+        else:
+            raise NotImplementedError
         return loss
 
 
-# [N C *] [N *]
-# 多分类FL，不支持smooth_target
-class FocalLoss_Ori(nn.Module):
+# [N C *] [N *]   多分类FL，不支持smooth_target
+class FocalLoss(nn.Module):
     """
     This is a implementation of Focal Loss with smooth label cross entropy supported which is proposed in
     'Focal Loss for Dense Object Detection. (https://arxiv.org/abs/1708.02002)'
@@ -67,12 +74,12 @@ class FocalLoss_Ori(nn.Module):
         reduction:
     """
 
-    def __init__(self, num_class, alpha=None, gamma=2, ignore_index=None, reduction='mean'):
-        super(FocalLoss_Ori, self).__init__()
+    def __init__(self, num_class, alpha=None, gamma=2, ignore_index=None, reduction='mean',
+                 smooth=0, eps=1e-6):
+        super(FocalLoss, self).__init__()
         self.num_class = num_class
         self.gamma = gamma
         self.reduction = reduction
-        self.smooth = 1e-4
         self.ignore_index = ignore_index
         self.alpha = alpha
         if alpha is None:
@@ -83,6 +90,8 @@ class FocalLoss_Ori(nn.Module):
             self.alpha = torch.as_tensor(alpha)
         if self.alpha.shape[0] != num_class:
             raise RuntimeError('the length not equal to number of class')
+        self.smooth = smooth
+        self.eps = eps
 
     def forward(self, logit, target):
         # assert isinstance(self.alpha,torch.Tensor)\
@@ -96,13 +105,14 @@ class FocalLoss_Ori(nn.Module):
             prob = prob.view(-1, prob.size(-1))  # [N,d1*d2..,C]-> [N*d1*d2..,C]
         ori_shp = target.shape
         target = target.view(-1, 1)  # [N,d1,d2,...]->[N*d1*d2*...,1]
+
         valid_mask = None
         if self.ignore_index is not None:
             valid_mask = target != self.ignore_index
             target = target * valid_mask
 
         # ----------memory saving way--------
-        prob = prob.gather(1, target.long()).view(-1) + self.smooth  # avoid nan, pt，q*p
+        prob = prob.gather(1, target.long()).view(-1) + self.eps  # avoid nan, pt，q*p,  [N, *, 1]
         logpt = torch.log(prob)
 
         alpha_class = alpha[target.squeeze().long()]
@@ -120,61 +130,9 @@ class FocalLoss_Ori(nn.Module):
         return loss
 
 
-#  from https://github.com/clcarwin/focal_loss_pytorch
-# N C *  N *
-# 多分类FL，不支持smooth_target
-class FocalLoss(nn.Module):
-    '''
-    Binary classification
-    https://arxiv.org/pdf/1708.02002.pdf
-    '''
-    def __init__(self, gamma=2, alpha=None, reduction='none'):
-        super(FocalLoss, self).__init__()
-        self.gamma = gamma
-        self.alpha = alpha
-        if isinstance(alpha, (float, int)):
-            self.alpha = torch.Tensor([alpha, 1-alpha])
-        if isinstance(alpha, list):
-            self.alpha = torch.Tensor(alpha)
-        self.reduction = reduction
-
-    def forward(self, input, target):
-        if input.dim() > 2:
-            input = input.view(input.size(0), input.size(1), -1)  # N,C,H,W => N,C,H*W
-            input = input.transpose(1, 2)    # N,C,H*W => N,H*W,C
-            input = input.contiguous().view(-1, input.size(2))   # N,H*W,C => N*H*W,C
-        target = target.view(-1, 1)    # N*H*W,1
-
-        logpt = F.log_softmax(input)  # , dim=1           log_p
-        logpt = logpt.gather(1, target.long()).view(-1)    # p*log(q), log_pt  N*H*W
-
-        pt = logpt.exp()
-        # 或者也可以通过把target变成独热编码，再与通过softmax的输出相乘，得到pt
-
-        if self.alpha is not None:
-            if self.alpha.type() != input.data.type():
-                self.alpha = self.alpha.type_as(input.data)
-                self.alpha.to(input.device)
-            at = self.alpha.gather(0, target.data.view(-1))
-            # at = self.alpha[target.data.view(-1)]
-            logpt = logpt * torch.Tensor(at)
-
-        loss = -1 * (1-pt)**self.gamma * logpt
-
-        if self.reduction == 'mean':
-            return loss.mean()
-        elif self.reduction == 'sum':
-            return loss.sum()
-        elif self.reduction == 'none':
-            return loss
-        else:
-            raise Exception('Unexpected reduction {}'.format(self.reduction))
-
-
-# taken from https://github.com/JunMa11/SegLoss/blob/master/test/nnUNetV2/loss_functions/focal_loss.py
-# [N C *] [N *]
-# 多分类FL，不支持smooth_target
+# [N C *] [N *], # 多分类FL，不支持ignore_index
 class FocalLossV1(nn.Module):
+    # taken from https://github.com/JunMa11/SegLoss/blob/master/test/nnUNetV2/loss_functions/focal_loss.py
     """
     copy from: https://github.com/Hsuxu/Loss_ToolBox-PyTorch/blob/master/FocalLoss/FocalLoss.py
     This is a implementation of Focal Loss with smooth label cross entropy supported which is proposed in
@@ -261,5 +219,52 @@ class FocalLossV1(nn.Module):
         return loss
 
 
-
+# #  from https://github.com/clcarwin/focal_loss_pytorch
+# # N C *  N * , # 多分类FL，不支持smooth_target, 不支持ignore_index
+# class FocalLoss(nn.Module):
+#     '''
+#     Binary classification
+#     https://arxiv.org/pdf/1708.02002.pdf
+#     '''
+#     def __init__(self, gamma=2, alpha=None, reduction='none'):
+#         super(FocalLoss, self).__init__()
+#         self.gamma = gamma
+#         self.alpha = alpha
+#         if isinstance(alpha, (float, int)):
+#             self.alpha = torch.Tensor([alpha, 1-alpha])
+#         if isinstance(alpha, list):
+#             self.alpha = torch.Tensor(alpha)
+#         self.reduction = reduction
+#
+#     def forward(self, input, target):
+#         if input.dim() > 2:
+#             input = input.view(input.size(0), input.size(1), -1)  # N,C,H,W => N,C,H*W
+#             input = input.transpose(1, 2)    # N,C,H*W => N,H*W,C
+#             input = input.contiguous().view(-1, input.size(2))   # N,H*W,C => N*H*W,C
+#         target = target.view(-1, 1)    # N*H*W,1
+#
+#         logpt = F.log_softmax(input)  # , dim=1           log_p
+#         logpt = logpt.gather(1, target.long()).view(-1)    # p*log(q), log_pt  N*H*W
+#
+#         pt = logpt.exp()
+#         # 或者也可以通过把target变成独热编码，再与通过softmax的输出相乘，得到pt
+#
+#         if self.alpha is not None:
+#             if self.alpha.type() != input.data.type():
+#                 self.alpha = self.alpha.type_as(input.data)
+#                 self.alpha.to(input.device)
+#             at = self.alpha.gather(0, target.data.view(-1))
+#             # at = self.alpha[target.data.view(-1)]
+#             logpt = logpt * torch.Tensor(at)
+#
+#         loss = -1 * (1-pt)**self.gamma * logpt
+#
+#         if self.reduction == 'mean':
+#             return loss.mean()
+#         elif self.reduction == 'sum':
+#             return loss.sum()
+#         elif self.reduction == 'none':
+#             return loss
+#         else:
+#             raise Exception('Unexpected reduction {}'.format(self.reduction))
 

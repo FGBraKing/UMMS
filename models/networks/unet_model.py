@@ -1,3 +1,5 @@
+import warnings
+
 import torch
 import logging
 import contextlib
@@ -15,6 +17,8 @@ from models.scheduler import create_scheduler
 from utils.others.metrics import BinaryMetrics, SoftMetrics
 from utils.others.distributed_utils import reduce_mean
 from utils.others.utils import print_numpy
+
+from test import test_during_train
 
 ddp_logger = logging.getLogger('ddp_logger')
 # --config_path=configs/defaults/mrusmr_unet_train.yaml --use_config
@@ -64,9 +68,9 @@ class UnetModel(BaseModel):
         self.net_segment = define_model(opt, self.device)
         self.finally_activate = get_activation('sigmoid').to(self.device)
 
-        self.loss_names = ['dice', 'bce', 'l2', 'total']
+        self.loss_names = ['regular', 'combo', 'total']
         if self.isTrain:
-            other_loss_kwargs = {}
+            # other_loss_kwargs = {}
             # # (sample_weight)   (gamma_neg gamma_pos clip)  (num_splits)  (activate)  (bce_smooth)
             # self.criterion = get_loss_criterion(name=opt.loss_name,
             #                                     ignore_index=opt.ignore_index, reduction=opt.reduction,
@@ -74,22 +78,24 @@ class UnetModel(BaseModel):
             #                                     alpha=opt.loss_alpha, beta=opt.loss_beta,
             #                                     gamma=opt.loss_gamma, weight=opt.loss_weight,
             #                                     **other_loss_kwargs).to(self.device)
-            self.criterionDice = get_loss_criterion(name='bdc',
-                                                    ignore_index=opt.ignore_index,
-                                                    reduction=opt.reduction,
-                                                    use_sigmoid=True,
-                                                    eps=opt.loss_eps,
-                                                    smooth=1.0,
-                                                    **other_loss_kwargs).to(self.device)
-            self.criterionBCE = get_loss_criterion(name='bce',
-                                                   ignore_index=opt.ignore_index,
-                                                   reduction=opt.reduction,
-                                                   weight=1,
-                                                   smooth=0.01,
-                                                   eps=opt.loss_eps,
-                                                   )
+            # self.criterionDice = get_loss_criterion(name='bdc',
+            #                                         ignore_index=opt.ignore_index,
+            #                                         reduction=opt.reduction,
+            #                                         use_sigmoid=True,
+            #                                         eps=opt.loss_eps,
+            #                                         smooth=1.0,
+            #                                         **other_loss_kwargs).to(self.device)
+            # self.criterionBCE = get_loss_criterion(name='bce',
+            #                                        ignore_index=opt.ignore_index,
+            #                                        reduction=opt.reduction,
+            #                                        weight=1,
+            #                                        smooth=0.01,
+            #                                        eps=opt.loss_eps,
+            #                                        )
+            # self.criterionL2 = getattr(losses, 'l2_regularization')
+            self.criterionCombo = get_loss_criterion(name='custom')
+            self.criterionRegular = get_loss_criterion(name='custom_regular')
 
-            self.criterionL2 = getattr(losses, 'l2_regularization')
             optimizer_kwargs = {'eps': 1e-8,
                                 'betas': (opt.optim_beta, 0.999)
                                 }
@@ -108,6 +114,7 @@ class UnetModel(BaseModel):
         # specify the images you want to save/display.
         self.visual_names = ['predict', 'label', 'volume']
         self.metric_names = ['DC', 'recall', 'precision', 'specificity', 'accuracy']
+        # 'hd' 'hd95' 'assd' 'asd'  'ravd'
 
         self.get_metrics = BinaryMetrics()
         self.get_metrics_soft = SoftMetrics(smooth=0., eps=1e-6)
@@ -115,10 +122,10 @@ class UnetModel(BaseModel):
         self.volume = None
         self.label = None
         self.predict = None
+        self.spacing = None
 
-        self.loss_dice = None
-        self.loss_bce = None
-        self.loss_l2 = None
+        self.loss_combo = None
+        self.loss_regular = None
         self.loss_total = None
         self.metrics = None
         # setattr(self, opt.loss_name, None)
@@ -129,13 +136,14 @@ class UnetModel(BaseModel):
 
         self.is_activated = False
 
-    def set_input(self, input):
-        self.volume = input['volume'].to(self.device)   # bs C D H W, C=1
-        self.label = input['label'].to(self.device)     # bs C D H W, C=1
-        self.volume_path = input['volume_path']
-        self.label_path = input['label_path']
+    def set_input(self, inputs):
+        self.volume = inputs['volume'].to(self.device)   # bs C D H W, C=1
+        self.label = inputs['label'].to(self.device)     # bs C D H W, C=1
+        self.volume_path = inputs['volume_path']
+        self.label_path = inputs['label_path']
+        self.spacing = inputs['spacing'].mean(0).tolist()
         if self.opt.DEBUG:
-            print('proportion: {:.2%}'.format(input['label'].sum()/input['label'].numpy().size))
+            print('proportion: {:.2%}'.format(inputs['label'].sum()/inputs['label'].numpy().size))
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
@@ -145,10 +153,11 @@ class UnetModel(BaseModel):
 
     def backward(self):
         with self.autocast_context():
-            self.loss_dice = self.criterionDice(self.predict, self.label)
-            self.loss_bce = self.criterionBCE(self.predict, self.label)
-            self.loss_l2 = self.criterionL2(self.net_segment.parameters())
-            self.loss_total = 1.0*self.loss_dice + 1.0*self.loss_bce + 0*self.loss_l2
+            # self.loss_dice = self.criterionDice(self.predict, self.label)
+            # self.loss_bce = self.criterionBCE(self.predict, self.label)
+            self.loss_item_dict, self.loss_combo = self.criterionCombo(self.predict, self.label)
+            self.loss_regular = self.criterionRegular(self.net_segment.parameters())
+            self.loss_total = self.loss_combo + 2e-4*self.loss_regular
         self.loss_total = self.loss_total / self.opt.gradient_accumulation_k_step
 
         if self.opt.use_mixed_precision:
@@ -185,7 +194,8 @@ class UnetModel(BaseModel):
         label = self.label.clone().detach()
         predict = (predict > 0.5).float()
         label = (label > 0.5).float()
-        self.metrics = self.get_metrics_soft(predict, label, *self.metric_names, *args, **kwargs)
+        self.metrics = self.get_metrics_soft(predict, label, *self.metric_names,
+                                             *args, **kwargs, voxelspacing=self.spacing)
 
         if self.opt.DDP:
             for i in range(len(self.metrics)):
@@ -193,6 +203,33 @@ class UnetModel(BaseModel):
                     self.metrics[i] = reduce_mean(self.metrics[i], torch.distributed.get_world_size())
 
         self.metric_dict = dict(zip(keys, self.metrics))
+
+    # 当前版本尚不支持DDP模式下进行滑动窗口测试
+    def slide_test(self, one_patient):
+        if self.opt.DDP:
+            raise AttributeError('当前版本尚不支持DDP模式下进行滑动窗口测试')
+        kwargs = {
+            'batch_size': self.opt.slide_test_batchsize,
+            'num_threads': self.opt.num_threads,
+            'crop_size': self.opt.crop_size,
+            'stride': (16, 16, 16),
+            'no_augment': True,
+            'visual_names': ('segment', 'label', 'origin_volume'),
+            'metric_names': ('DC', 'recall', 'precision', 'specificity', 'accuracy')
+        }
+        self.metric_dict, visuals = test_during_train(one_patient, self.net_segment,
+                                                      SimpleNamespace(**kwargs), self.device)
+
+        for name in self.visual_names:
+            if name == 'predict':
+                self.predict = visuals['segment']
+            elif name == 'label':
+                self.label = visuals['label']
+            elif name == 'volume':
+                self.volume = visuals['origin_volume']
+            else:
+                warnings.warn('在滑窗测试中使用了错误的visual name:{}'.format(name))
+                ddp_logger.warning('在滑窗测试中使用了错误的visual name')
 
 
 def main():

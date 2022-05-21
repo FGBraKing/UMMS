@@ -16,25 +16,30 @@ _C = CN()
 _C.dataroot = None
 _C.phase = None
 _C.fold = None
-_C.serial_batches = None
+_C.serial_batches = True
 _C.custom = None
 _C.preprocess = None
 _C.crop_size = None
 _C.target_size = None
-_C.scale = None
-_C.scale_range = None
-_C.rot_angle_spectrum = None
-_C.rot_axes = None
-_C.mirror_axes = None
-_C.g_noise_variance = None
-_C.bright_mu = None
-_C.bright_sigma = None
-_C.elastic_alpha = None
-_C.elastic_sigma = None
-_C.shift_mu = None
-_C.shift_sigma = None
 _C.order_data = 3
 _C.order_seg = 1
+_C.elastic_alpha = [0., 70]
+_C.elastic_sigma = [8., 12.]
+_C.scale = None
+_C.scale_range = [0.7, 1.3]
+_C.rot_angle_spectrum = None
+_C.rot_axes = None
+_C.shift_mu = [0., 1000]
+_C.shift_sigma = [10., 13.]
+_C.mirror_axes = None
+_C.g_noise_variance = [0.0, 0.1]
+_C.blur_sigma = (0.5, 1.5)
+_C.bright_mu = None
+_C.bright_sigma = None
+_C.bright_multiplier_range = (0.7, 1.3)
+_C.contrast_range = (0.65, 1.35)
+_C.simulate_zoom_range = (0.5, 1)
+_C.gamma_range = (0.7, 1.3)
 # dataloader
 _C.batch_size = None
 _C.data_shuffle = None
@@ -51,9 +56,9 @@ _C.init_channel_number = None
 _C.up_interpolate = None
 _C.conv_order = None
 # initialization
-_C.init_type = None
-_C.init_gain = None
-_C.init_std = None
+_C.init_type = 'kaiming'
+_C.init_gain = 1.4142135623730951
+_C.init_std = 0.02
 # ---------------------------------------------------------------------------- #
 # 优化参数：包括优化器、学习率和损失函数等
 # ---------------------------------------------------------------------------- #
@@ -65,6 +70,7 @@ _C.loss_gamma = None
 _C.loss_weight = None
 _C.loss_eps = 1e-7
 _C.loss_smooth = None
+_C.loss_opt = None
 _C.reduction = None
 _C.ignore_index = None
 # optimizer
@@ -84,8 +90,9 @@ _C.warmup_prefix = True
 _C.lr_cycle_mul = None
 _C.lr_cycle_decay = None
 _C.lr_cycle_limit = None
-_C.cooldown_epochs = 5
-_C.min_lr = 1e-8
+_C.lr_cycle_num = None
+_C.cooldown_epochs = 10
+_C.min_lr = 1e-7
 _C.decay_epochs = None
 _C.decay_rate = None
 _C.lr_k_decay = 1.0
@@ -190,7 +197,8 @@ _C.test_batchsize = None
 _C.test_preprocess = None
 _C.test_scale = None
 
-
+_C.slide_test = True
+_C.slide_test_batchsize = None
 # ---------------------------------------------------------------------------- #
 # predict                  预测时使用的参数,部分可能没有在option上实现，建议使用yaml文件
 # ---------------------------------------------------------------------------- #

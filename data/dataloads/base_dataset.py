@@ -109,12 +109,13 @@ class TestOnePatientDataset(data.Dataset):
         :param opt:
             crop_size: WHD
             stride: WHD
+            no_augment： 扩增
         :param pad_kwargs:
         '''
         super(TestOnePatientDataset, self).__init__()
 
         # Check whether it can be executed
-        assert origin_volume.ndim in [2, 3, 4], 'Supports only 3D (DxHxW) or 4D (CxDxHxW) images'
+        assert origin_volume.ndim in [2, 3, 4], 'Supports only 3D (DxHxW) or 4D (CxDxHxW) volumes'
         ndim = origin_volume.ndim
         crop_size = opt.crop_size
         stride = opt.stride

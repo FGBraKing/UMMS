@@ -16,7 +16,7 @@ SUPPORT_SCHEDULERS = ['cosine', 'tanh', 'step', 'multistep', 'plateau', 'poly', 
 # other_args: num_epochs min_lr  lr_k_decay  cooldown_epochs decay_rate decay_epochs patience_epochs eval_metric
 
 #    cosine:  num_epochs min_lr  lr_k_decay  cooldown_epochs
-#      tanh:  num_epochs min_lr              cooldown_epochs
+#      tanh:  num_epochs min_lr  lr_k_decay  cooldown_epochs
 #      poly:  num_epochs min_lr  lr_k_decay  cooldown_epochs decay_rate
 #    linear:             min_lr                                         decay_epochs
 #      step:                                                 decay_rate decay_epochs
@@ -30,22 +30,22 @@ if __name__ == '__main__':
 
     for sche in SUPPORT_SCHEDULERS:
         args = dict(
-            lr_noise=0.5,
+            lr_noise=None,
             lr_noise_pct=0.67,
             lr_noise_std=1.,
             seed=42,
 
-            warmup_epochs=50,
+            warmup_epochs=20,
             warmup_lr=1e-5,
-            warmup_prefix=False,
+            warmup_prefix=True,
 
-            lr_cycle_mul=1,       # mul > 1 - t_init / t_max
-            lr_cycle_decay=0.8,
-            lr_cycle_limit=5,
+            lr_cycle_mul=1.0,       # mul > 1 - t_init / t_max
+            lr_cycle_decay=0.6,
+            lr_cycle_limit=3,
             cooldown_epochs=10,
 
-            min_lr=1e-8,
-            num_epochs=1000,
+            min_lr=1e-7,
+            num_epochs=300,
             decay_epochs=100,
             decay_rate=0.5,
             lr_k_decay=1.0,
@@ -54,25 +54,18 @@ if __name__ == '__main__':
             patience_epochs=20
         )
         args['lr_policy'] = sche
-        if sche == 'cosine':
-            args['num_epochs'] = 200
-        elif sche == 'tanh':
-            pass
-        elif sche == 'poly':
-            args['warmup_prefix'] = True
-            pass
+        if sche == 'cosine' or sche == 'tanh' or sche == 'poly':
+            args['num_epochs'] = 300
         elif sche == 'step':
-            args['warmup_prefix'] = False
-            args['decay_epochs'] = 200
-            args['decay_rate'] = 0.5
+            args['num_epochs'] = 1000
+            args['decay_epochs'] = 100
+            args['decay_rate'] = 0.6
         elif sche == 'multistep':
-            args['warmup_prefix'] = False
+            args['num_epochs'] = 1000
             args['decay_epochs'] = [150, 350, 650, 1000]
-            args['decay_rate'] = 0.5
+            args['decay_rate'] = 0.6
         elif sche == 'linear':
-            # args['warmup_prefix'] = True
-            args['decay_epochs'] = num_epochs
-            args['min_lr'] = 1e-8
+            args['decay_epochs'] = 1000
         else:
             args['decay_epochs'] = 100
 

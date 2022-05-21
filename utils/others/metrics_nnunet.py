@@ -25,6 +25,9 @@ class ConfusionMatrix:
 
     def __init__(self, test=None, reference=None):
 
+        self.test = None
+        self.reference = None
+
         self.tp = None
         self.fp = None
         self.tn = None
@@ -38,17 +41,14 @@ class ConfusionMatrix:
         self.set_test(test)
 
     def set_test(self, test):
-
         self.test = test
         self.reset()
 
     def set_reference(self, reference):
-
         self.reference = reference
         self.reset()
 
     def reset(self):
-
         self.tp = None
         self.fp = None
         self.tn = None

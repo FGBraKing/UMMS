@@ -134,7 +134,7 @@ def multiprocessing_plot_overlay(list_of_image_files, list_of_seg_files, list_of
 
 
 def multiprocessing_plot_overlay_preprocessed(list_of_case_files, list_of_output_files, overlay_intensity,
-                                 num_processes=8, modality_index=0):
+                                              num_processes=8, modality_index=0):
     p = Pool(num_processes)
     r = p.starmap_async(plot_overlay_preprocessed, zip(
         list_of_case_files, list_of_output_files, [overlay_intensity] * len(list_of_output_files),

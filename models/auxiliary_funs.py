@@ -405,7 +405,7 @@ class Activation(nn.Module):
 
 
 # -------------------------------------------function---------------
-# [N, 1, *]
+# tensor: (N, 1, *)/(N, *) - > (N, C, *)
 def make_one_hot(tensor, num_classes=None, with_channel=True, ignore_index=None):
     """Convert class index tensor to one hot encoding tensor.
     Args:
@@ -424,9 +424,9 @@ def make_one_hot(tensor, num_classes=None, with_channel=True, ignore_index=None)
         num_classes = tensor.max() + 1
     elif num_classes == 1:
         return tensor
-    shape = np.array(tensor.shape)
+    shape = np.array(tensor.shape)  # [N, 1, *]
     shape[1] = num_classes
-    shape = tuple(shape)
+    shape = tuple(shape)    # [N, C, *]
     result = torch.zeros(shape).scatter_(1, tensor.cpu().long(), 1)  # dim=1, index=input.cpu().long(), src=1
 
     if ignore_index is not None:
@@ -448,6 +448,7 @@ def make_one_hot(tensor, num_classes=None, with_channel=True, ignore_index=None)
     return result
 
 
+# (N, C, D, H, W) -> (C, N * D * H * W)
 def flatten_by_class(tensor):
     """Flattens a given tensor such that the channel axis is first.
     The shapes are transformed as follows:
@@ -467,6 +468,7 @@ def flatten_by_class(tensor):
         return tensor.view(1, -1)
 
 
+# tensor: (N, *) - > (N, C, *)
 def expand_as_one_hot(input, C, ignore_index=None):
     """
     Converts NxSPATIAL label image to NxCxSPATIAL, where each label gets converted to its corresponding one-hot vector.

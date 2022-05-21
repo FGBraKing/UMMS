@@ -70,6 +70,7 @@ class BaseModel(ABC):
         self.label_path = []
         self.model_names = []
         self.loss_names = []
+        self.loss_item_dict = defaultdict()
         self.optimizers = []
         # define self.optimizers and self.loss_criterion
         # self.schedulers = [get_scheduler(optimizer, opt) for optimizer in self.optimizers]
@@ -152,6 +153,9 @@ class BaseModel(ABC):
             self.compute_visuals()
             self.compute_metrics()
 
+    def slide_test(self, patient_data):
+        pass
+
     def compute_visuals(self):
         """Calculate additional output images for visdom and HTML visualization"""
         pass
@@ -195,7 +199,7 @@ class BaseModel(ABC):
     def get_current_metrics(self):
         metrics_ret = OrderedDict()
         for name in self.metric_names:
-            if isinstance(name, str):
+            if isinstance(name, str) and name in self.metric_dict.keys():
                 metrics_ret[name] = self.metric_dict[name]
         return metrics_ret
 
@@ -213,6 +217,8 @@ class BaseModel(ABC):
                 if isinstance(v, torch.Tensor):
                     errors_ret[k] = reduce_mean(v, torch.distributed.get_world_size())
 
+        for key, item in self.loss_item_dict.items():
+            errors_ret[key] = item
         return errors_ret
 
     def get_models(self):

@@ -59,6 +59,7 @@ def create_test_dataset(opt):
     test_arg_dict['serial_batches'] = True
     test_arg_dict['dataroot'] = opt.dataroot
     test_arg_dict['phase'] = opt.test_data_phase
+    test_arg_dict['fold'] = opt.fold
     test_arg_dict['preprocess'] = opt.test_preprocess
     # test_arg_dict['scale'] = opt.test_scale
     test_arg_dict['target_size'] = opt.crop_size
@@ -71,12 +72,12 @@ def create_test_dataset(opt):
     test_arg_dict['order_seg'] = opt.order_seg
     # ----------------------------------------------------------------
     # shift_mu shift_sigma elastic_sigma elastic_alpha bright_sigma bright_mu target_size
-    test_arg_dict['shift_mu'] = opt.shift_mu
-    test_arg_dict['shift_sigma'] = opt.shift_sigma
-    test_arg_dict['elastic_sigma'] = opt.elastic_sigma
-    test_arg_dict['elastic_alpha'] = opt.elastic_alpha
-    test_arg_dict['bright_sigma'] = opt.bright_sigma
-    test_arg_dict['bright_mu'] = opt.bright_mu
+    # test_arg_dict['shift_mu'] = opt.shift_mu
+    # test_arg_dict['shift_sigma'] = opt.shift_sigma
+    # test_arg_dict['elastic_sigma'] = opt.elastic_sigma
+    # test_arg_dict['elastic_alpha'] = opt.elastic_alpha
+    # test_arg_dict['bright_sigma'] = opt.bright_sigma
+    # test_arg_dict['bright_mu'] = opt.bright_mu
 
     dataset_class = find_dataset_using_name(opt.dataset_name)
     dataset = dataset_class(SimpleNamespace(**test_arg_dict))
@@ -100,6 +101,29 @@ def create_test_dataset(opt):
         drop_last=False
     )
     return dataloader
+
+
+def create_slide_test_dataset(opt):
+    dataset_filename = "data.dataloads." + opt.dataset_name + "_dataset"
+    datasetlib = importlib.import_module(dataset_filename)
+
+    dataset = None
+    target_dataset_name = 'test' + opt.dataset_name.replace('_', '') + 'dataset'
+    for name, cls in datasetlib.__dict__.items():
+        if name.lower() == target_dataset_name.lower() and issubclass(cls, BaseDataset):
+            dataset = cls
+
+    if dataset is None:
+        raise NotImplementedError("In %s.py, there should be a subclass of BaseDataset with class name "
+                                  "that matches %s in lowercase." % (dataset_filename, target_dataset_name))
+    kwargs = {
+        'dataroot': opt.dataroot,
+        'phase': opt.test_data_phase,
+        'fold': opt.fold
+    }
+    test_dataset = dataset(SimpleNamespace(**kwargs))
+    ddp_logger.warning(" slide_test_dataset [%s] was created" % type(dataset).__name__)
+    return test_dataset
 
 
 class CustomDatasetDataLoader:

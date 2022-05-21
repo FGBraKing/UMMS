@@ -148,6 +148,7 @@ def show_array_3d(array, row=5, col=5, title='number', normalize_per=False, fix_
     for i in range(ceil(channel/total)):
         if total == 1:
             show_image(array[i, :, :], num=i, title=f'{i}')
+            return
 
         if fix_num:
             fig = fig_list[max_num - i - 1]

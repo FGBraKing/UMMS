@@ -1,19 +1,61 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from models.auxiliary_funs import make_one_hot
 from utils.others.metrics import SoftMetrics
 from torch.nn import CTCLoss
 
 
+# [N, *]
+class BinaryIOULoss(nn.Module):
+    def __init__(self, ignore_index=None, reduction='mean',
+                 use_batch=True, use_sigmoid=False, smooth=0, eps=1e-7):
+        super(BinaryIOULoss, self).__init__()
+        assert reduction in ['none', 'mean', 'sum']
+        # suggest set a large number when target area is large,like '10|100'
+        self.ignore_index = ignore_index
+        self.reduction = reduction
+        self.use_batch = use_batch     # treat a large map when True
+        self.use_sigmoid = use_sigmoid
+        self.eps = eps
+        self.smooth = smooth
+
+    def forward(self, output, target):
+        assert output.shape[0] == target.shape[0], "output & target batch size don't match"
+        # get the logit
+        if self.use_sigmoid:
+            output = F.sigmoid(output)
+        if self.use_batch:
+            dim0 = output.shape[0]
+        else:
+            dim0 = 1
+        output = output.contiguous().view(dim0, -1).float()
+        target = target.contiguous().view(dim0, -1).float()
+
+        num = 2 * torch.sum(torch.mul(output, target), dim=1)
+        den = torch.sum(output.abs() + target.abs(), dim=1) - num
+
+        loss = 1 - (num + self.smooth) / (den + self.smooth + self.eps)  # [dim0]
+
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        elif self.reduction == 'none':
+            return loss
+        else:
+            raise Exception('Unexpected reduction {}'.format(self.reduction))
+
+
 # [N,C,*]
 class IOULoss(nn.Module):
-    def __init__(self, class_weight=None, ignore_index=None, normalization=None, reduction='mean',
-                 smooth=1., eps=1e-6):
+    def __init__(self, class_weight=None, ignore_index=None, normalization=None,
+                 reduction='mean', smooth=0., eps=1e-6):
         super(IOULoss, self).__init__()
         if class_weight is not None:
             self.class_weight = torch.Tensor(class_weight)
+        else:
+            self.class_weight = class_weight
 
         if isinstance(ignore_index, (int, float)):
             self.ignore_index = [int(ignore_index)]
@@ -35,14 +77,13 @@ class IOULoss(nn.Module):
         self.smooth = smooth
         self.eps = eps
 
-    def basic_forward(self, output, target):
+    @staticmethod
+    def basic_forward(output, target):
         N, C = output.shape[:2]
         output = output.contiguous().view(N, C, -1).float()
         target = target.contiguous().view(N, C, -1).float()
         intersect = (output * target).sum(-1)       # N C
         denominator = output.abs().sum(-1) + target.abs().sum(-1) - intersect
-        if self.class_weight:
-            intersect = intersect * self.class_weight  # NC * C
         return intersect, denominator
 
     def std_forward(self, output, target):
@@ -61,9 +102,6 @@ class IOULoss(nn.Module):
         numerator = ((output*target).sum(-1) * class_weight)
         denominator = ((output.abs() + target.abs() - output*target).sum(-1)) * class_weight    # C
 
-        if self.class_weight:
-            numerator = numerator * self.class_weight
-
         iou = numerator.sum() / denominator.sum()
         return 1 - iou
 
@@ -71,23 +109,26 @@ class IOULoss(nn.Module):
         intersect, denominator = self.basic_forward(output, target)
         all_iou = (intersect + self.smooth) / (denominator + self.smooth + self.eps)  # NC
 
-        return 1 - all_iou
+        all_iou_loss = 1 - all_iou
+        if self.class_weight:
+            all_iou_loss = all_iou_loss * self.class_weight  # NC * C
+        return all_iou_loss
 
     def class_forward(self, output, target):
         intersect, denominator = self.basic_forward(output, target)
         class_dice = (intersect.sum(dim=0) + self.smooth) / (denominator.sum(dim=0) + self.smooth + self.eps)
         class_loss = 1 - class_dice     # C
+        if self.class_weight:
+            class_loss = class_loss * self.class_weight  # C * C
 
         return class_loss
 
     def batch_forward(self, output, target):
-        intersect, denominator = self.basic_forward(output, target)
-        batch_iou = (intersect.sum(dim=1) + self.smooth) / (denominator.sum(dim=1) + self.smooth + self.eps)
-        batch_loss = 1 - batch_iou     # N
+        num_class = output.size(1)
+        all_iou_loss = self.all_forward(output, target)
+        return all_iou_loss.sum(1)/(num_class-len(self.ignore_index))
 
-        return batch_loss
-
-    def forward(self, output, target, forward_type='std'):
+    def forward(self, output, target, forward_type='all'):
         if self.class_weight is not None:
             assert self.class_weight.shape[0] == target.shape[1], \
                 'Expect weight shape [{}], get[{}]'.format(target.shape[1], self.weight.shape[0])
@@ -106,6 +147,7 @@ class IOULoss(nn.Module):
                 # output = torch.mul(output, valid_mask)  # can not use inplace for bp
                 # target = torch.mul(target.float(), valid_mask)
 
+        used_classes = output.size(1) - len(self.ignore_index)
         if forward_type == 'class':
             loss = self.class_forward(output, target)
         elif forward_type == 'batch':
@@ -120,6 +162,8 @@ class IOULoss(nn.Module):
             raise Exception('Unexpected forward_type {}'.format(forward_type))
 
         if self.reduction == 'mean':
+            if forward_type == 'all' or forward_type == 'class':
+                loss = loss.sum(1)/used_classes
             return loss.mean()
         elif self.reduction == 'sum':
             return loss.sum()

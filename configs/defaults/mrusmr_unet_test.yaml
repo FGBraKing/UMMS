@@ -2,60 +2,69 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_1.0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
-dataset_name : 'mrusmr'
-model_name : 'unet3d'
-test_name : 'crop969632_slide24248_nopad_noaug'
+name : 'mrusmr128_fold0_bs2_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_3x300_0.6_2080Ti'
+phase : 'test'
+test_name : 'crop969632_slide161616_nopad_noaug_nogauus_nopostprocess'
+
+local_gpu : 2
 visible_gpu : '0,1,2,3'
 # '0,''1,''2,''3,''4,''5,''6,''7'    "'0,1,2,3'"
 gpu_ids : [2, 3]
 phase_list : ['test', 'val']
-DEBUG : False
-deterministic : True
 
-local_gpu : 0
-phase : 'mrval'
-batch_size : 16
+
+DEBUG : False
+verbose : false
 no_augment : True
 compute_pad : False
 save_visuals : True
+deterministic : True
+use_gauusion_kernel : False
+do_connected_component : False
+minimum_valid_object_size : 40
 # ---------------------------------------------------------------------------- #
-# weights
+# data
 # ---------------------------------------------------------------------------- #
-weight_name : '579_net_mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5.pth'
-verbose : false
-weight_dir  : './traces/checkpoints/mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
+# dataset
+dataset_name : 'mrusmr'
+fold : 0
+
+crop_size : [96, 96, 80]
+target_size : [96, 96, 80]
+stride : [16, 16, 16]
+
+# dataloader
+batch_size : 8
+num_threads : 16
+# ---------------------------------------------------------------------------- #
+# model
+# ---------------------------------------------------------------------------- #
+model_name : 'unet3d'
+input_nc : 1
+output_nc : 1
+init_channel_number : 16
+up_interpolate : False
+conv_order : 'crb'
+# ---------------------------------------------------------------------------- #
+# path
+# ---------------------------------------------------------------------------- #
+dataroot :  './traces/datasets/MR-USviaFenster20-pre128'
+
+weight_name : '262_net_mrusmr128_fold0_patch_bs8_unet3d_ch16_combofocal_1_0.2_4_adam_2e-4_poly_3x300_0.6.pth'
+weight_dir  : './traces/checkpoints/mrusmr128_fold0_patch_bs8_unet3d_ch16_combofocal_1_0.2_4_adam_2e-4_poly_3x300_0.6'
 weight_on_dir : False
 
 logs_dir : './traces/logs'
 checkpoints_dir : './traces/checkpoints'
 results_dir : './traces/results'
-
-# ---------------------------------------------------------------------------- #
-# data
-# ---------------------------------------------------------------------------- #
-dataroot :  './traces/datasets/MR-USviaFenster20_pre'
-crop_size : [96, 96, 32]
-target_size : [96, 96, 32]
-stride : [24, 24, 8]
-
-num_threads : 16
-# ---------------------------------------------------------------------------- #
-# network
-# ---------------------------------------------------------------------------- #
-input_nc : 1
-output_nc : 1
-init_channel_number : 32
-up_interpolate : False
-conv_order : 'crb'
-
-
 # ---------------------------------------------------------------------------- #
 # test
 # ---------------------------------------------------------------------------- #
 eval : True
-metric_names : ['dice', 'recall', 'precision', 'specificity', 'accuracy']
+metric_names : ['dice', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd']
 visual_names : ['segment', 'label', 'origin_volume']
 # 'origin_volume'
 # 'basic_metrics',
+
+
 ...

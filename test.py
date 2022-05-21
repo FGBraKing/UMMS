@@ -15,15 +15,17 @@ from glob import glob
 from data.dataloads.base_dataset import BaseDataset, TestOnePatientDataset
 from data.utils_data import get_pad_image, get_unpad_image
 # from models.modules.segmentation.three_d.unet3d_V0 import UNet3D
-from models.modules.segmentation.three_d.unet3d_V0 import UNet3D as UNetV0
-from models.modules.segmentation.three_d.unet3d_V1 import UNet3D as UNetV1
-from models.modules.segmentation.three_d.unet3d_V2 import UNet3D as UNetV2
-from models.modules.segmentation.three_d.unet3d_V3 import UNet3D as UNetV3
+# from models.modules.segmentation.three_d.unet3d_V0 import UNet3D as UNetV0
+# from models.modules.segmentation.three_d.unet3d_V1 import UNet3D as UNetV1
+# from models.modules.segmentation.three_d.unet3d_V2 import UNet3D as UNetV2
+# from models.modules.segmentation.three_d.unet3d_V3 import UNet3D as UNetV3
+from models.modules.segmentation_model.unet_custom import UnetCustom as UNetV1
 from configs.simple_options import get_opt
 from configs.utils_config import pretty_print_opt, get_pretty_opt, get_config
 from utils.forLogs import get_logger
 from utils.others.metrics import BinaryMetrics
 from utils.others.utils import init_seed, init_torch, mkdirs, Timer, print_numpy
+from data.connected_components import retain_the_largest_connected_component_binary
 from utils.others.img_io import show_paired_image, show_array_3d, show_volume_label, show_volume_label_predict
 
 
@@ -111,7 +113,12 @@ def do_test(opt):
             with torch.no_grad():
                 sub_segments = test_by_patient(test_dataloader, test_network)    # tensor NCDHW
                 sub_segments = torch.sigmoid(sub_segments)
-                segment_regain_dict = compute_segment_by_patient(sub_segments,  dataset_info, crop_num_list, axis_tuple)
+
+                kwargs = {'do_connected_component': opt.do_connected_component,
+                          'minimum_valid_object_size': opt.minimum_valid_object_size,
+                          'use_gauusion_kernel': opt.use_gauusion_kernel}
+                segment_regain_dict = compute_segment_by_patient(sub_segments,  dataset_info, crop_num_list, axis_tuple,
+                                                                 SimpleNamespace(**kwargs), data['spacing'])
 
                 segment = segment_regain_dict['padded'] if opt.compute_pad else segment_regain_dict['origin']
                 label = get_pad_image(data['label'],
@@ -123,7 +130,7 @@ def do_test(opt):
                 # show_volume_label(segment, label, 5, 5, title='padded segment label')
 
                 metrics = compute_metrics_by_patient(segment, label, *opt.metric_names,
-                                                     get_metrics=get_metrics, need_key=True)
+                                                     get_metrics=get_metrics, need_key=True, voxelspacing=data['spacing'])
                 visual = compute_visual_by_patient(segment, label, *opt.visual_names, **dataset_volumes)
                 show_result_by_patient(opt, patient_id, metrics=metrics, visuals=visual, message_logger=message_logger,
                                        vis_name=checkpoint_name[:6]+volume_name)
@@ -140,6 +147,44 @@ def do_test(opt):
 
     opt_logger.info(f'best_dice: {best_dice}\n'
                     f'best_weight: {best_weight}')
+
+
+def test_during_train(one_patient, model, opt, device):
+    # crop_size: WHD
+    # stride: WHD
+    # no_augment： 扩增
+    # metric_names
+    # visual_names
+    one_patient_dataset = TestOnePatientDataset(one_patient['volume'], opt)  # CDHW
+    dataset_info = one_patient_dataset.get_info()  # 'crop_size' 'stride' 'origin_shape'  'pad_shape'
+    dataset_volumes = one_patient_dataset.get_volume()  # 'origin_volume'  'pad_volume'
+    crop_num_list = one_patient_dataset.get_crop_num_list()
+    axis_tuple = one_patient_dataset.get_axis()
+
+    test_dataloader = DataLoader(one_patient_dataset,
+                                 batch_size=opt.batch_size,
+                                 shuffle=False,
+                                 num_workers=opt.num_threads,
+                                 pin_memory=True,
+                                 drop_last=False)
+    with torch.no_grad():
+        result_list = []
+        for data in test_dataloader:  # NCDHW
+            data = data.to(device)
+            channel_result_list = [model(data[:, channel:channel + 1, ...]) for channel in range(data.shape[1])]
+            result_list.append(torch.cat(channel_result_list, dim=1))
+        sub_segments = torch.cat(result_list, dim=0)        # tensor NCDHW
+        sub_segments = torch.sigmoid(sub_segments)
+
+        kwargs = {'do_connected_component': False, 'minimum_valid_object_size': 40, 'use_gauusion_kernel': False}
+        segment_regain_dict = compute_segment_by_patient(sub_segments, dataset_info, crop_num_list, axis_tuple,
+                                                         SimpleNamespace(**kwargs),  one_patient['spacing'])
+        segment = segment_regain_dict['origin']
+        label = one_patient['label']
+        metrics = compute_metrics_by_patient(segment, label, *opt.metric_names,
+                                             get_metrics=BinaryMetrics(), need_key=True, voxelspacing=one_patient['spacing'])
+        visual = compute_visual_by_patient(segment, label, *opt.visual_names, **dataset_volumes)
+    return metrics, visual
 
 
 def create_test_dataset(dataset_name):
@@ -207,31 +252,33 @@ def test_by_patient(dataloader, model):
     return torch.cat(result_list, dim=0)
 
 
-def compute_segment_by_patient(sub_volumes, dataset_info, crop_num_list, axises):
+def compute_segment_by_patient(sub_volumes, dataset_info, crop_num_list, axises, opt, spacing=1):
     '''
     :param sub_volumes:tensor,NCDHW
     :param dataset_info: {'crop_size': self.crop_size, 'stride': self.stride,
                         'origin_shape': self.origin_size, 'pad_shape': self.padded_size}
     :param crop_num_list:  [int,int,int]
     :param axises: (tuple,tuple)
+    :param opt: option for do_connected_component,
+    :param spacing :
     :return: {'origin': origin_segment, 'padded': padded_segment}
     '''
     assert sub_volumes.shape[0] == np.prod(crop_num_list)
     assert sub_volumes.shape[1] == len(axises) + 1
     sub_volumes_mask = torch.where(sub_volumes > 0.5, 1, 0)     # NCDHW
-    # combine filp
+    # ============================================combine filp=======================================
     sub_volumes_mask = sub_volumes_mask.int()
     for ind, axis in enumerate(axises):
         shift_axis = tuple([a+1 for a in axis])
         sub_volumes_mask[:, ind+1, ...] = torch.flip(sub_volumes_mask[:, ind+1, ...], dims=shift_axis)
-    print(sub_volumes_mask.size())
+    # print(sub_volumes_mask.size())
     try:
         sub_volumes_mask = torch.sum(sub_volumes_mask, dim=1)         # NDHW  , keepdim=True
     except RuntimeError:
         sub_volumes_mask = torch.sum(sub_volumes_mask.cpu(), dim=1)         # NDHW  , keepdim=True
     sub_volumes_mask = torch.where(sub_volumes_mask > sub_volumes.shape[1]/2, 1, 0)
 
-    # combine slide
+    # ========================================combine slide=========================================
     crop_size = dataset_info['crop_size']
     stride = dataset_info['stride']
     pad_shape = dataset_info['pad_shape']
@@ -239,8 +286,8 @@ def compute_segment_by_patient(sub_volumes, dataset_info, crop_num_list, axises)
     seg_mask = torch.zeros(size=pad_shape, dtype=torch.int32, device=sub_volumes_mask.device)
     threshold = torch.zeros(size=pad_shape, dtype=torch.float32, device=sub_volumes_mask.device)
     std_weights = torch.ones_like(sub_volumes_mask[0], dtype=torch.int32, device=sub_volumes_mask.device)
-    # if False:
-    #     std_weights = get_gauusian_kernel_v2(sub_volumes_mask[0].shape)
+    if opt.use_gauusion_kernel:
+        std_weights = get_gauusian_kernel_v2(sub_volumes_mask[0].shape, dtype=torch.int32, device=sub_volumes_mask.device)
 
     ndim = len(crop_num_list)
     assert ndim == len(crop_size) == len(stride) == len(crop_num_list)
@@ -284,6 +331,9 @@ def compute_segment_by_patient(sub_volumes, dataset_info, crop_num_list, axises)
 
     seg_mask = torch.where(seg_mask > threshold/2, 1, 0)
     padded_segment = seg_mask.cpu().numpy()
+    if opt.do_connected_component:
+        volume_per_voxel = float(np.prod(spacing, dtype=np.float64))
+        padded_segment = retain_the_largest_connected_component_binary(padded_segment, volume_per_voxel, opt.minimum_valid_object_size)
     origin_segment = get_unpad_image(pad_shape, dataset_info['origin_shape'], padded_segment)
 
     return {'origin': origin_segment, 'padded': padded_segment}
@@ -292,6 +342,7 @@ def compute_segment_by_patient(sub_volumes, dataset_info, crop_num_list, axises)
 def compute_metrics_by_patient(predict, target, *metric_names, get_metrics=None, need_key=True, **kwargs):
     if get_metrics is None:
         get_metrics = BinaryMetrics()
+    # 加上求hd95、assd、ravd等参数。voxelspacing=xxx、connectivity=xxx
     metrics = get_metrics(predict, target, *metric_names, **kwargs)
     keys = tuple(metric_names)
     metrics_dict = dict(zip(keys, metrics))
@@ -415,16 +466,19 @@ def get_gauusian_kernel_v2(shape, dtype=None, device=None):
     # assert dims in (1, 2, 3, 4)
     for axis in range(dims):
         shp = shape[axis]
-
         # torch.swapaxes 是从1.8.0才开始支持
         target_tmp = target if axis == 0 else np.swapaxes(target, 0, axis)
-
         for i in range(shp):
             val = i if i <= (shp - 1)/2 else (shp - 1) - i
             target_tmp[i, ...] += val
-
         target = target_tmp if axis == 0 else np.swapaxes(target, 0, axis)
-    return torch.from_numpy(target)
+
+    result = torch.from_numpy(target)
+    if dtype is not None:
+        result = result.type(dtype)
+    if device is not None:
+        result = result.to(device)
+    return result
 
 
 if __name__ == '__main__':
