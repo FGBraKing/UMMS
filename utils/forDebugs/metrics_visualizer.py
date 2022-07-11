@@ -5,13 +5,13 @@ import math
 from glob import glob
 from matplotlib import pyplot as plt
 import pandas as pd
-# import numpy as np
+import numpy as np
 # import seaborn as sns
 # from utils.others.img_io import plot_2d
 # from .img_io import plot_2d
 
 
-def extract_metrics(resolving_file, dividually=False, interval=1, title=''):
+def extract_metrics(resolving_file, dividually=False, interval=1, start=0, title=''):
     # visual_names=('DC', 'recall', 'precision', 'accuracy'),
     vaild_pat = re.compile(r'^\((.*)\)\s*?(.*)\s*$')
     dict_pat = re.compile(r'(\w+):\s*([+-]?\d+(?:\.\d+)?)')
@@ -35,14 +35,20 @@ def extract_metrics(resolving_file, dividually=False, interval=1, title=''):
 
     # print(info_df.info())
     print(info_df.describe())
+    show_info_df = info_df.loc[start::interval, metrics_keys].reset_index(drop=True)
+    # print(info_df.shape)
+    # print(info_df.loc[start::interval, metrics_keys].shape)
     plt.figure()
-    info_df[metrics_keys].plot()
-    plt.title('metrics all', fontsize=14)
+    show_info_df.plot()
+    # info_df[metrics_keys].plot()
+    plt.title('metrics all '+title, fontsize=14)
     plt.show()
     if dividually:
         for key in metrics_keys:
-            plot_2d(range(math.ceil(len(info_df[key])/interval)), info_df[key][::interval],
-                    label=key, fig_title='Metrics dividually '+title)
+            tmp_df = info_df.loc[start::interval, key].to_numpy()
+            plot_2d(range(len(tmp_df)), tmp_df, label=key, fig_title='Metrics dividually '+title)
+            # plot_2d(range(math.floor(len(info_df[key])/interval)), info_df[key][start::interval],
+            #         label=key, fig_title='Metrics dividually '+title)
     return info_df
 
 
@@ -58,6 +64,13 @@ def plot_2d(x, y, *args, fig_title=None, ax_title=None, x_label=None, y_label=No
         ax.set_ylabel(y_label)
     ax.plot(x, y, *args, **kwargs)
     ax.legend()
+    annotate_x = len(y) // 3 * 2
+    annotate_y = y[annotate_x]
+    annotate_text_x = annotate_x / 2
+    annotate_text_y = (min(y) + max(y)) / 2
+    ax.annotate(text=f'convergence:{annotate_y}', xy=(annotate_x, annotate_y),
+                xytext=(annotate_text_x, annotate_text_y),
+                arrowprops=dict(facecolor='red', shrink=0.05))
     fig.show()
     plt.close(fig)
 
@@ -81,21 +94,21 @@ def one_time_repair_metrics_file(file_name):
 
 
 def main():
-    logs_dir = r'/home/lf/raid_lf/PROJECT/UMMS/traces/logs'
-    exp_name = r'mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_1.5_adam_2e-4_poly_3x300_0.6'
+    logs_dir = r'/home/lf/data_fong/PROJECT/UMMS/traces/logs/mrus_patch_kfold'
+    exp_name = r'mrusus128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti'
 
     metrics_file = os.path.join(logs_dir, exp_name, r'metrics.txt')
     test_metrics_file = os.path.join(logs_dir, exp_name, r'test_metrics.txt')
     slide_metrics_file = os.path.join(logs_dir, exp_name, r'slide_test_metrics.txt')
 
-    data_df = extract_metrics(metrics_file, dividually=True, interval=3, title='train data')
+    data_df = extract_metrics(metrics_file, dividually=True, interval=2, start=1, title='train data')
 
-    test_data_df = extract_metrics(test_metrics_file, dividually=True, interval=3, title='test data')
+    test_data_df = extract_metrics(test_metrics_file, dividually=True, interval=5,  start=4, title='test data')
 
-    slide_data_df = extract_metrics(slide_metrics_file, dividually=True, interval=3, title='slide data')
+    slide_data_df = extract_metrics(slide_metrics_file, dividually=True, interval=5, start=4, title='slide data')
 
 
 if __name__ == '__main__':
-    # main()
-    testfile = r'/home/users/lf/data_lf/PROJECT/UMMS/traces/logs/mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_2x300_0.6_1080Ti/slide_test_metrics.txt'
-    one_time_repair_metrics_file(testfile)
+    main()
+    # testfile = r'/home/users/lf/data_lf/PROJECT/UMMS/traces/logs/mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_2x300_0.6_1080Ti/slide_test_metrics.txt'
+    # one_time_repair_metrics_file(testfile)

@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 # from .img_io import plot_2d
 
 
-def extract_loss(loss_file, pat=r'^\(epoch.*\).*?(({}):\s+?(\d+\.\d+))', loss_name='dice', interval=1):
+def extract_loss(loss_file, pat=r'^\(epoch.*\).*?(({}):\s+?(\d+\.\d+))', xlabel='batch', loss_name='dice', start=0, interval=1):
     pat = re.compile(pat.format(loss_name))
     loss_list = []
     with open(loss_file, 'r') as f_loss:
@@ -23,13 +23,24 @@ def extract_loss(loss_file, pat=r'^\(epoch.*\).*?(({}):\s+?(\d+\.\d+))', loss_na
                 loss_list.append(float(match_result.groups()[-1]))
     print_numpy(np.array(loss_list), shp=True, percentile=True)
     print_numpy(np.array(loss_list[100:]), shp=True, percentile=True)
-    batchs = math.ceil(len(loss_list) / interval)
+
+    # batchs = math.ceil(len(loss_list) / interval)
+
+    data = loss_list[start::interval]
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    ax.plot(range(batchs), loss_list[::interval])
+    ax.plot(range(len(data)), data)
     ax.set_title('loss curve')
     # ax.axis('off')
-    ax.set(xlabel='batch', ylabel=loss_name)
+    annotate_x = len(data)//3*2
+    annotate_y = data[annotate_x]
+    annotate_text_x = annotate_x / 2
+    annotate_text_y = (min(data) + max(data)) / 2
+    ax.annotate(text=f'convergence:{annotate_y}', xy=(annotate_x, annotate_y),
+                xytext=(annotate_text_x, annotate_text_y),
+                arrowprops=dict(facecolor='red', shrink=0.05))
+    # , xytext=(2, 2), arrowprops=dict(facecolor='black', shrink=0.05)
+    ax.set(xlabel=xlabel, ylabel=loss_name)
     plt.show()
 
 
@@ -73,12 +84,12 @@ def plot_2d(x, y, *args, fig_title=None, ax_title=None, x_label=None, y_label=No
 
 
 if __name__ == '__main__':
-    logsdir = r'/home/lf/raid_lf/PROJECT/UMMS/traces/logs'
-    exp_name = r'mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_1.5_adam_2e-4_poly_3x300_0.6'
+    logsdir = r'/home/lf/data_fong/PROJECT/UMMS/traces/logs/mrus_patch_kfold'
+    exp_name = r'mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti'
     loss_name = r'loss.txt'
 
     loss_file = os.path.join(logsdir, exp_name, loss_name)
-    extract_loss(loss_file, loss_name='total', interval=5)
+    extract_loss(loss_file, xlabel='epoch', loss_name='total', start=0, interval=2)
 
 
 

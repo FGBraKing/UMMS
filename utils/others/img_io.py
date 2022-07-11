@@ -17,6 +17,12 @@ to_std_image_float32 = NormalizeRange(0, 1, np.float32)
 # fig = plt.figure()  # an empty figure with no Axes
 # fig, ax = plt.subplots()  # a figure with a single Axes
 # fig, axs = plt.subplots(2, 2)  # a figure with a 2x2 grid of Axes
+# ax[i, j].set_xlabel('epoch')
+# ax[i, j].set_ylabel('lr')
+# ax[i, j].axes.xaxis.set_ticklabels([])
+# ax[i, j].axes.yaxis.set_ticklabels([])
+# ax[i, j].axes.xaxis.set_visible(False)
+# ax[i, j].axes.yaxis.set_visible(False)
 def read_nii(img_path):
     img = nib.load(img_path)
     img_array = img.get_data()  # W H D

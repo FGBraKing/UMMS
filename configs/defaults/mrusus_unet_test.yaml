@@ -3,11 +3,11 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrusmr128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti'
+name : 'mrusus128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti'
 phase : 'train'
-test_name : 'crop969680_slide161616_nopad_noaug_nogauus_postprocess'
+test_name : 'crop969680_slide161616_nopad_noaug_nogauus_postprocess_1000'
 
-local_gpu : 1
+local_gpu : 2
 visible_gpu : '0,1,2,3'
 # '0,''1,''2,''3,''4,''5,''6,''7'    "'0,1,2,3'"
 
@@ -20,15 +20,15 @@ no_augment : True
 compute_pad : False
 use_gauusion_kernel : false
 do_connected_component : true
-minimum_valid_object_size : 40
-
+minimum_valid_object_size : 1000
+# 40
 gpu_ids : [2, 3]
 phase_list : ['train', 'test']
 # ---------------------------------------------------------------------------- #
 # data
 # ---------------------------------------------------------------------------- #
 # dataset
-dataset_name : 'mrusmr'
+dataset_name : 'mrusus'
 fold : 4
 
 crop_size : [96, 96, 80]
@@ -52,8 +52,8 @@ conv_order : 'crb'
 # ---------------------------------------------------------------------------- #
 dataroot :  './traces/datasets/MR-USviaFenster20-pre128'
 
-weight_name : '107_net_mrusmr128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti.pth'
-weight_dir  : './traces/checkpoints/mrus_patch_kfold/mrusmr128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti'
+weight_name : '42_net_mrusus128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti.pth'
+weight_dir  : './traces/checkpoints/mrus_patch_kfold/mrusus128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti'
 weight_on_dir : false
 
 logs_dir : './traces/logs'

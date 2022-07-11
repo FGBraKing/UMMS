@@ -1,17 +1,19 @@
 import os
+import re
+import time
+import torch
 import argparse
 import numpy as np
+import pandas as pd
+import SimpleITK as sitk
+from configs.utils_config import get_pretty_opt
+from data.utils_data import print_data_describe
 from data.dataloads.base_dataset import BaseDataset, CustomDataset, NIIDataset
 from data.transforms.transformOnArray import get_transform, get_pre_transform, get_post_transform, ToTensor
-from configs.utils_config import get_pretty_opt
-from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_to_list
+from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_to_list, Timer
 from utils.others.img_io import show_array_3d, show_volume_label, show_array_histogram, show_pired_histogram
+from utils.others.metrics import BinaryMetrics
 # from batchgenerators.augmentations.crop_and_pad_augmentations import pad_nd_image_and_seg, crop
-from utils.others.utils import Timer
-from data.utils_data import print_data_describe
-import time
-import re
-import pandas as pd
 
 
 def get_data_path_old_v1(dataroot, data_phase):
@@ -102,35 +104,16 @@ def get_data_path_old_v2(dataroot, data_phase, fold=1):
     return mr_paths, us_paths
 
 
-def check_data_info(dataroot):
-    pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
-
-    us_paths = [
-        {
-            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
-        }
-        for p_id in pat_ids
-    ]
-
-    mr_paths = [
-        {
-            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
-        }
-        for p_id in pat_ids
-    ]
-    print("{:*^120s}".format('US'))
-    print_data_describe(us_paths)
-    print("{:*^120s}".format('MR'))
-    print_data_describe(mr_paths)
-
-
 def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
     pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
 
-    if os.path.isfile(os.path.join(dataroot, f'split_{fold}.csv')):
+    if not isinstance(fold, int):
+        used_ids = pat_ids
+    elif os.path.isfile(os.path.join(dataroot, f'split_{fold}.csv')):
         split_df = pd.read_csv(os.path.join(dataroot, f'split_{fold}.csv'), keep_default_na=True)
+        test_ids = split_df['test'].dropna().tolist()
+        train_ids = split_df['train'].dropna().tolist()
+        used_ids = test_ids if data_phase == "test" else train_ids
     else:
         print('creating the split files!')
         np.random.RandomState(seed=random_seed).shuffle(pat_ids)
@@ -157,13 +140,8 @@ def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
         split_df = pd.DataFrame.from_dict(kfold_dict)
         split_df.T.to_csv(os.path.join(dataroot, 'split.csv'))
 
-        print('Please rerun the program!')
-        return
-
-    test_ids = split_df['test'].dropna().tolist()
-    train_ids = split_df['train'].dropna().tolist()
-
-    used_ids = test_ids if data_phase == "test" else train_ids
+        # print('Please rerun the program!')
+        raise FileExistsError(f'split_{fold}.csv has been created, please rerun the program')
 
     us_paths = [
         {
@@ -180,13 +158,36 @@ def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
         }
         for p_id in used_ids
     ]
-
     # print(us_paths[0], mr_paths[0])
     # print(os.path.isfile(us_paths[0]['volume']),
     #       os.path.isfile(us_paths[0]['label']),
     #       os.path.isfile(mr_paths[0]['volume']),
     #       os.path.isfile(mr_paths[0]['label']))
     return mr_paths, us_paths
+
+
+def check_data_info(dataroot):
+    pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
+
+    us_paths = [
+        {
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+        }
+        for p_id in pat_ids
+    ]
+
+    mr_paths = [
+        {
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+        }
+        for p_id in pat_ids
+    ]
+    print("{:*^120s}".format('US'))
+    print_data_describe(us_paths)
+    print("{:*^120s}".format('MR'))
+    print_data_describe(mr_paths)
 
 
 class MrusDataset(NIIDataset):
@@ -214,6 +215,10 @@ class MrusDataset(NIIDataset):
         us_volume = self.loader(us_path['volume'])
         mr_label = self.loader(mr_path['label'])
         us_label = self.loader(us_path['label'])
+        mr_spacing = sitk.ReadImage(mr_path['volume']).GetSpacing()
+        us_spacing = sitk.ReadImage(us_path['volume']).GetSpacing()
+        mr_origin_shape = mr_label.shape
+        us_origin_shape = us_label.shape
 
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         mr_volume = self._apply_pre_transform(mr_volume)
@@ -229,11 +234,19 @@ class MrusDataset(NIIDataset):
         mr_label = self.to_tensor(mr_label)
         us_volume = self.to_tensor(us_volume)
         us_label = self.to_tensor(us_label)
+        mr_spacing = torch.Tensor(mr_spacing[::-1])
+        us_spacing = torch.Tensor(us_spacing[::-1])
+        mr_now_shape = mr_label.shape
+        us_now_shape = us_label.shape
 
-        return {'mr_volume': mr_volume, 'mr_volume_path': mr_path['volume'],
-                'mr_label': mr_label, 'mr_label_path': mr_path['label'],
-                'us_volume': us_volume, 'us_volume_path': us_path['volume'],
-                'us_label': us_label, 'us_label_path': us_path['label']}
+        return {
+            'mr_volume': mr_volume, 'mr_volume_path': mr_path['volume'],
+            'mr_label': mr_label, 'mr_label_path': mr_path['label'], 'mr_spacing': mr_spacing,
+            'mr_origin_shape': mr_origin_shape, 'mr_now_shape': mr_now_shape,
+            'us_volume': us_volume, 'us_volume_path': us_path['volume'],
+            'us_label': us_label, 'us_label_path': us_path['label'], 'us_spacing': us_spacing,
+            'us_origin_shape': us_origin_shape, 'us_now_shape': us_now_shape
+        }
 
     def plot_distribution(self):
         from utils.forDebugs.data_visualizer import show_density_on_one_figure
@@ -242,10 +255,10 @@ class MrusDataset(NIIDataset):
         else:
             bs = 4
 
-        us_data = np.zeros((bs, 112, 128, 128), dtype=np.float32)
-        mr_data = np.zeros((bs, 112, 128, 128), dtype=np.float32)
-        us_data_i = np.zeros((112, 128, 128), dtype=np.float32)
-        mr_data_i = np.zeros((112, 128, 128), dtype=np.float32)
+        us_data = np.zeros((bs, 96, 128, 128), dtype=np.float32)
+        mr_data = np.zeros((bs, 96, 128, 128), dtype=np.float32)
+        us_data_i = np.zeros((96, 128, 128), dtype=np.float32)
+        mr_data_i = np.zeros((96, 128, 128), dtype=np.float32)
 
         print(self.mr_size, self.us_size)
 
@@ -260,6 +273,44 @@ class MrusDataset(NIIDataset):
             show_density_on_one_figure(us_data_i, mr_data_i, 'us', 'mr', title=f'{i+1}:{title}')
         print(us_data.size, mr_data.size)
         show_density_on_one_figure(us_data, mr_data, 'us', 'mr', title='all patient')
+
+    def comput_similarity(self):
+        get_metrics = BinaryMetrics()
+        metric_names = ('DC', 'hd', 'hd95', 'assd', 'asd', 'ravd',)
+        # 'volume_correlation', 'volume_change_correlation', 'obj_assd', 'obj_asd'
+
+        for i in range(self.data_size):
+            mr_path = self.mr_paths[i]
+            us_path = self.us_paths[i]
+            print(i, os.path.basename(mr_path['label']).split('.')[0])
+            mr_label = self.loader(mr_path['label'])
+            us_label = self.loader(us_path['label'])
+            mr_spacing = sitk.ReadImage(mr_path['volume']).GetSpacing()
+            us_spacing = sitk.ReadImage(us_path['volume']).GetSpacing()
+            spacing = ((np.array(mr_spacing) + np.array(us_spacing))/2).tolist()
+            metrics = get_metrics(mr_label, us_label, *metric_names, voxelspacing=spacing)
+            metrics_dict = dict(zip(metric_names, metrics))
+            print(metrics_dict)
+
+    def get_data_roi_rate(self):
+        from utils.others.utils import get_foreground_shape
+        image_size = 128*128*96
+        for i in range(self.data_size):
+            mr_path = self.mr_paths[i]
+            us_path = self.us_paths[i]
+            mr_label = self.loader(mr_path['label'])
+            us_label = self.loader(us_path['label'])
+            assert mr_label.size == us_label.size == image_size
+            mr_spacing = sitk.ReadImage(mr_path['volume']).GetSpacing()
+            us_spacing = sitk.ReadImage(us_path['volume']).GetSpacing()
+            mr_area_rate = mr_label.sum() / image_size
+            us_area_rate = us_label.sum() / image_size
+            mr_roi_range = tuple(get_foreground_shape(mr_label, number=10))
+            us_roi_range = tuple(get_foreground_shape(us_label, number=10))
+            print(i+1, os.path.basename(mr_path['label']).split('.')[0],
+                  f'mr roi_rate:{mr_area_rate:<6.4%}, us roi rate:{us_area_rate:<6.4%}')
+            print(f'mr roi range:{mr_roi_range}, us roi range:{us_roi_range}')
+            print(f'mr spacing:{mr_spacing}, us spacing:{us_spacing}')
 
     def print_data_describe(self, *args, **kwargs):
         for phase, case_list in zip(['mr', 'us'], [self.mr_paths, self.us_paths]):
@@ -285,11 +336,16 @@ class MrusDataset(NIIDataset):
                 # show_array_3d(label[0, ...], 4, 4)
 
 
+class PredictMrusDataset(MrusDataset):
+    def __init__(self, opt):
+        super(PredictMrusDataset, self).__init__(opt)
+
+
 def main():
     # r'elastic_randomscale_ranomrotate_centercrop_'
     parser = argparse.ArgumentParser(description='for the MRI and TRUS dataset')
     parser.add_argument('--dataroot', type=str,
-                        default=r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre128')
+                        default=r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre12812896')
     parser.add_argument('--phase', type=str, default='train')
     parser.add_argument('--fold', type=int, default=0)
     parser.add_argument('--seed', type=int, default=1008)
@@ -314,6 +370,7 @@ def main():
     # opt.preprocess = r'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_' \
     #                  r'GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
     opt.random_state = np.random.RandomState(seed=opt.seed)
+    opt.fold = 'all'
 
     # opt.preprocess = r'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_
     # gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
@@ -322,8 +379,10 @@ def main():
     dataset = MrusDataset(opt)
     print(len(dataset))
     with Timer('running with custom_debug, using time:%ss'):
+        dataset.get_data_roi_rate()
+        # dataset.comput_similarity()
         # dataset.print_data_describe()
-        dataset.plot_distribution()
+        # dataset.plot_distribution()
         # dataset.custom_debug()
         # start_time = time.time()
         # for ind, test_data in enumerate(dataset):
@@ -336,6 +395,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
     # get_data_path(r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre96', 'train')
-    # check_data_info(r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre192')
+    check_data_info(r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280')

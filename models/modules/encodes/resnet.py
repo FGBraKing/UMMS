@@ -6,43 +6,80 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.modules.blocks.blocks3d import conv3x3x3, conv1x1x1, create_conv_block
+from models.modules.blocks.blocks3d import conv3x3x3, conv1x1x1, create_conv_block, same_convlution
+from models.auxiliary_funs import get_normalization3d, get_activation
 
 
 def get_inplanes(depth=4, initial_channel=64):
     return [initial_channel*2**i for i in range(depth)]
 
 
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3,
+                 norm_type="batch", act_type="lrelu", use_norm=True, use_act=True):
+        super(ConvBlock, self).__init__()
+        use_bias = not (norm_type == 'batch' or norm_type == 'group')
+        self.conv = same_convlution(in_channels, out_channels, kernel_size, use_bias=use_bias)
+        self.norm = get_normalization3d(out_channels, norm_type)
+        self.act = get_activation(act_type)
+        self.use_norm = use_norm
+        self.use_act = use_act
+
+    def forward(self, x):
+        x = self.conv(x)
+        if self.use_norm:
+            x = self.norm(x)
+        if self.use_act:
+            x = self.act(x)
+        return x
+
+
+class DoubleConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, norm_type="batch", act_type="lrelu"):
+        super(DoubleConv, self).__init__()
+        conv1_in_channels = in_channels
+        conv1_out_channels = max(in_channels, out_channels // 2)
+        conv2_in_channels, conv2_out_channels = conv1_out_channels, out_channels
+        self.conv1 = ConvBlock(conv1_in_channels, conv1_out_channels, kernel_size, norm_type, act_type)  # cbr
+        self.conv2 = ConvBlock(conv2_in_channels, conv2_out_channels, kernel_size, norm_type, act_type)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        return x
+
+
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, downsample=None):
+    def __init__(self, in_planes, planes, stride=1, downsample=None, norm_type='batch', act_type='lrelu'):
         super().__init__()
+        use_bias = not (norm_type == 'batch' or norm_type == 'group')
 
-        self.conv1 = conv3x3x3(in_planes, planes, kernel_size=stride+2, stride=stride, padding=1, use_bias=False)
-        self.bn1 = nn.BatchNorm3d(planes)
-        self.relu = nn.ReLU(inplace=True)
+        self.conv1 = conv3x3x3(in_planes, planes, kernel_size=stride+2, stride=stride, padding=1, use_bias=use_bias)
+        self.norm1 = get_normalization3d(planes, norm_type)
+        self.act = get_activation(act_type)
 
         self.conv2 = conv3x3x3(planes, planes)
-        self.bn2 = nn.BatchNorm3d(planes)
+        self.norm2 = get_normalization3d(planes, norm_type)
+
         self.downsample = downsample
-        self.stride = stride
 
     def forward(self, x):
         residual = x
 
         out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
+        out = self.norm1(out)
+        out = self.act(out)
 
         out = self.conv2(out)
-        out = self.bn2(out)
+        out = self.norm2(out)
 
         if self.downsample is not None:
             residual = self.downsample(x)
 
         out += residual
-        out = self.relu(out)
+        out = self.act(out)
 
         return out
 
@@ -50,16 +87,18 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, in_planes, planes, stride=1, downsample=None):
+    def __init__(self, in_planes, planes, stride=1, downsample=None, norm_type='batch', act_type='lrelu'):
         super().__init__()
 
-        self.conv1 = conv1x1x1(in_planes, planes)
-        self.bn1 = nn.BatchNorm3d(planes)
-        self.conv2 = conv3x3x3(planes, planes, kernel_size=stride+2, stride=stride, padding=1, use_bias=False)
-        self.bn2 = nn.BatchNorm3d(planes)
-        self.conv3 = conv1x1x1(planes, planes * self.expansion)
-        self.bn3 = nn.BatchNorm3d(planes * self.expansion)
-        self.relu = nn.ReLU(inplace=True)
+        use_bias = not (norm_type == 'batch' or norm_type == 'group')
+
+        self.conv1 = conv1x1x1(in_planes, planes, use_bias=use_bias)
+        self.norm1 = get_normalization3d(planes, norm_type)
+        self.conv2 = conv3x3x3(planes, planes, kernel_size=stride+2, stride=stride, padding=1, use_bias=use_bias)
+        self.norm2 = get_normalization3d(planes, norm_type)
+        self.conv3 = conv1x1x1(planes, planes * self.expansion, use_bias=use_bias)
+        self.norm3 = get_normalization3d(planes * self.expansion, norm_type)
+        self.act = get_activation(act_type)
         self.downsample = downsample
         self.stride = stride
 
@@ -67,21 +106,21 @@ class Bottleneck(nn.Module):
         residual = x
 
         out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
+        out = self.norm1(out)
+        out = self.act(out)
 
         out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
+        out = self.norm2(out)
+        out = self.act(out)
 
         out = self.conv3(out)
-        out = self.bn3(out)
+        out = self.norm3(out)
 
         if self.downsample is not None:
             residual = self.downsample(x)
 
         out += residual
-        out = self.relu(out)
+        out = self.act(out)
 
         return out
 
@@ -205,7 +244,8 @@ def generate_model(model_depth, **kwargs):
 
 
 class ResnetEncoder(nn.Module):
-    def __init__(self, in_channels, depth, f_maps=16, layers=(2, 2, 2, 2, 2), basic_block=BasicBlock):
+    def __init__(self, in_channels, depth, f_maps=16, norm_type="batch", act_type="lrelu",
+                 block_style="basic", repeat_style='consistence'):
         super(ResnetEncoder, self).__init__()
         self.in_channels = in_channels
         self.depth = depth
@@ -214,31 +254,46 @@ class ResnetEncoder(nn.Module):
             f_maps = [f_maps*2**x for x in range(self.depth + 1)]
         assert isinstance(f_maps, list) or isinstance(f_maps, tuple)
         assert self.depth + 1 <= len(f_maps), "Required at least 2 levels in the U-Net when once downsample"
-        assert self.depth <= len(layers), "Required at least 2 levels in the U-Net when once downsample"
-        self.features_channels = f_maps[:self.depth + 1]
-        self.layers = layers[:self.depth]
 
-        self.in_conv = create_conv_block(in_channels, f_maps[0], kernel_size=3, order='cbr', padding=1, num_groups=1)
+        self.block_style = block_style
+        self.repeat_style = repeat_style
+        repeat_num = self.get_repeat_num()
+
+        if block_style == "basic":
+            basic_block = BasicBlock
+        elif block_style == "bottle":
+            basic_block = Bottleneck
+        else:
+            raise NotImplementedError
+
+        self.in_conv = DoubleConv(in_channels, f_maps[0], kernel_size=3, norm_type=norm_type, act_type=act_type)
+        self.features_channels = [f_maps[0]] + [f_maps[i+1]*basic_block.expansion for i in range(self.depth)]
+
         self.layer1 = nn.Sequential(
             nn.MaxPool3d(kernel_size=3, stride=2, padding=1),
-            self.make_layer(f_maps[0], f_maps[1], stride=1, blocks_num=layers[0], basic_block=basic_block)
+            self.make_layer(f_maps[0], f_maps[1], 1, norm_type, act_type, basic_block, repeat_num[0])
         )
         self.rest_down_blocks = nn.ModuleList([
-            self.make_layer(f_maps[i], f_maps[i+1], 2, layers[i], basic_block) for i in range(1, self.depth)
+            self.make_layer(f_maps[i]*basic_block.expansion, f_maps[i+1], 2,
+                            norm_type, act_type, basic_block, repeat_num[i]) for i in range(1, self.depth)
         ])
 
     @staticmethod
-    def make_layer(in_plane, out_plane, stride, blocks_num, basic_block):
-        downsample = None
-        if stride != 1 or in_plane != out_plane * basic_block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv3d(in_plane, out_plane * basic_block.expansion, stride, stride, 0, 1, 1, bias=False),
-                nn.BatchNorm3d(out_plane * basic_block.expansion))
-        modules = [basic_block(in_planes=in_plane, planes=out_plane, stride=stride, downsample=downsample)]
+    def make_layer(in_plane, out_plane, stride, norm_type, act_type, block, blocks_num):
+        use_bias = not (norm_type == 'batch' or norm_type == 'group')
 
-        in_plane = out_plane * basic_block.expansion
+        downsample = None
+        if stride != 1 or in_plane != out_plane * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1x1(in_plane, out_plane * block.expansion, stride=stride, use_bias=use_bias),
+                get_normalization3d(out_plane * block.expansion, norm_type)
+            )
+
+        modules = [block(in_plane, out_plane, stride, downsample, norm_type, act_type)]
+
+        in_plane = out_plane * block.expansion
         for i in range(1, blocks_num):
-            modules.append(basic_block(in_planes=in_plane, planes=out_plane))
+            modules.append(block(in_plane, out_plane, norm_type=norm_type, act_type=act_type))
         return nn.Sequential(*modules)
 
     def forward(self, x):
@@ -257,10 +312,41 @@ class ResnetEncoder(nn.Module):
         """Return channels dimensions for each tensor of forward output of encoder"""
         return self.features_channels
 
+    def get_repeat_num(self):
+        if self.depth == 4:
+            if self.repeat_style == "consistence":
+                repeat_num = [2, 2, 2, 2]
+            else:
+                repeat_num = [3, 4, 6, 3]
+        else:
+            repeat_num = (2, )*self.depth
+        return repeat_num
 
 
+if __name__ == "__main__":
+    import torch
+    from torchsummary import summary
+    from functools import partial
+    # from models.auxiliary_hookers import FeatureMapExtractor, FeatureGradientExtractor
+    from models.auxiliary_funs import print_model_parm_nums, print_model_parm_flops
 
+    torch.cuda.set_device('cuda:1')
+    # device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
+    net = ResnetEncoder(in_channels=1, depth=4, f_maps=16, norm_type='batch', act_type="lrelu",
+                        block_style="bottle", repeat_style='not consistence').cuda()
 
+    print('---------------------------------------------------------')
+    for name, layer in net.named_children():
+        print(name, type(layer))
+
+    inputs = torch.rand((4, 1, 80, 96, 96), requires_grad=True).cuda()
+    print_model_parm_nums(net)  # 14.7302M
+
+    output = net(inputs)
+    print(len(output))
+    for oo in output:
+        print(oo.size())
+    print(net.out_channels)
 
 
 

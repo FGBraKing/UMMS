@@ -36,7 +36,7 @@ def get_gauusian_kernel_v2(shape):
             val = i if i <= (shp - 1)/2 else (shp - 1) - i
             target_tmp[i, ...] += val
 
-        target = target_tmp if axis == 0 else np.swapaxes(target, 0, axis)
+        target = target_tmp if axis == 0 else np.swapaxes(target_tmp, 0, axis)
     return target
 
 

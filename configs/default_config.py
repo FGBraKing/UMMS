@@ -20,6 +20,9 @@ _C.serial_batches = True
 _C.custom = None
 _C.preprocess = None
 _C.crop_size = None
+_C.source_crop_size = None
+_C.target_crop_size = None
+_C.crop_stride = None
 _C.target_size = None
 _C.order_data = 3
 _C.order_seg = 1
@@ -197,7 +200,7 @@ _C.test_batchsize = None
 _C.test_preprocess = None
 _C.test_scale = None
 
-_C.slide_test = True
+_C.slide_test = False
 _C.slide_test_batchsize = None
 # ---------------------------------------------------------------------------- #
 # predict                  预测时使用的参数,部分可能没有在option上实现，建议使用yaml文件

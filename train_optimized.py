@@ -47,8 +47,6 @@ def train_single(ind, *args):
     opt = args[0]
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
-    device_name = get_device_name()
-    opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
 
     opt = correct_dist_args(ind, opt)
 
@@ -71,8 +69,6 @@ def train_multi(ind, *args):
     opt = args[0]
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
-    device_name = get_device_name()
-    opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
 
     opt = correct_dist_args(ind, opt)
 
@@ -119,6 +115,8 @@ def main(config_name, sleep_sec=10):
     train = train_single if opt.single else train_multi
 
     print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+    print(opt.name)
+    print('waiting: {} seconds'.format(sleep_sec))
     time.sleep(sleep_sec)
     print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
 
@@ -133,7 +131,7 @@ if __name__ == "__main__":
     # rest from the training program
     # local_rank, is suitable to distrubute.launch
     parser.add_argument('--config_name', type=str, default='mrusus_unet_train', help='the name of config')
-    parser.add_argument('second', type=int, default=10, help='wait some second and then run')
+    parser.add_argument('--second', type=int, default=5, help='wait some second and then run')
     parser.add_argument('training_script_args', nargs=REMAINDER, help='training_script_args')
     args = parser.parse_args()
     main(args.config_name, args.second)

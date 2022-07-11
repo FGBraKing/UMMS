@@ -1,24 +1,17 @@
 import os
+import time
 import torch
 import argparse
 import numpy as np
 import pandas as pd
+import SimpleITK as sitk
+from itertools import combinations
+from configs.utils_config import get_pretty_opt
 from data.utils_data import nii_loader
 from data.dataloads.base_dataset import BaseDataset, CustomDataset, NIIDataset
 from data.transforms.transformOnArray import get_transform, get_pre_transform, get_post_transform, ToTensor
-from configs.utils_config import get_pretty_opt
-from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_to_list
+from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_to_list, Timer
 from utils.others.img_io import show_array_3d, show_volume_label, show_array_histogram, show_pired_histogram
-# from batchgenerators.augmentations.crop_and_pad_augmentations import pad_nd_image_and_seg, crop
-from utils.others.utils import Timer
-import time
-import SimpleITK as sitk
-
-
-# def get_data_path(dataroot, data_phase):
-#     root = os.path.join(dataroot, data_phase)
-#     return [{'volume': os.path.join(root, name.replace('label', 'image')), 'label': os.path.join(root, name)}
-#             for name in os.listdir(root) if 'label' in name]
 
 
 def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
@@ -28,8 +21,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
     if not isinstance(fold, int):
         return [
             {
-                'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+                'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
+                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
             }
             for p_id in pat_ids
         ]
@@ -62,8 +55,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
         split_df = pd.DataFrame.from_dict(kfold_dict)
         split_df.T.to_csv(os.path.join(dataroot, 'split.csv'))
 
-        print('Please rerun the program!')
-        return
+        # print('Please rerun the program!')
+        raise FileExistsError(f'split_{fold}.csv has been created, please rerun the program')
 
     test_ids = split_df['test'].dropna().tolist()
     train_ids = split_df['train'].dropna().tolist()
@@ -78,6 +71,105 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
         for p_id in used_ids
     ]
     return mr_paths
+
+
+class MrusmrPlusDataset(NIIDataset):
+    axis_database = (
+        (0,),
+        ((0,), (1,), (1, 2)),
+        ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2), (0, 1, 2)),
+    )
+
+    def __init__(self, opt):
+        super(MrusmrPlusDataset, self).__init__(opt)
+        self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
+
+        self.mirror_axes = self.get_mirror_axis(opt.mirror_axes)
+        self.mirror_num = len(self.mirror_axes) + 1             # self.mirror_num = 8
+        self.rotate_axes = self.get_rot_axis(opt.rot_axes)
+        self.rotate_num = len(self.rotate_axes) * 4             # self.rotate_num = 4
+
+        self.true_size = len(self.paths)
+        # 顺序是path、mirror、rotate
+        self.data_size = self.true_size*self.mirror_num*self.rotate_num
+
+        self.pre_transform = get_pre_transform(opt)
+        self.transform = get_transform(opt)
+        self.post_transform = get_post_transform(opt)
+        self.to_tensor = ToTensor(expand_dims=True)
+
+    @staticmethod
+    def get_mirror_axis(axes):
+        length = len(axes)
+        all_result = []
+        for i in range(length):
+            all_result += list(combinations(axes, i+1))
+        return tuple(all_result)
+
+    @staticmethod
+    def get_rot_axis(axes):
+        return tuple(combinations(axes, 2))
+
+    def get_rot_data(self, data, index):
+        index = index % (self.mirror_num*self.rotate_num)
+        index = index % self.rotate_num
+        axis_num = index // 4
+        index = index % 4
+        rot_num = index // 1
+        data = np.rot90(data, rot_num, axes=self.rotate_axes[axis_num])
+        return data
+
+    def get_mirror_data(self, data, index):
+        index = index % (self.mirror_num*self.rotate_num)
+        index = index // self.rotate_num
+        # ndim = len(data.shape)
+        if index == 0:
+            return data
+        else:
+            # return np.flip(data, MrusmrPlusDataset.axis_database[ndim-1][index])
+            return np.flip(data, self.mirror_axes[index-1])
+
+    def get_data_index(self, index):
+        return index // (self.mirror_num*self.rotate_num)
+
+    def get_augmentation(self, data, seg, index):
+        data = self.get_mirror_data(data, index)
+        data = self.get_rot_data(data, index)
+
+        seg = self.get_mirror_data(seg, index)
+        seg = self.get_rot_data(seg, index)
+        return data, seg
+
+    def __getitem__(self, index):
+        index_used = self._get_used_index(index)
+
+        data_index = self.get_data_index(index_used)
+
+        volume_path = self.paths[data_index]['volume']
+        label_path = self.paths[data_index]['label']
+
+        spacing = sitk.ReadImage(volume_path).GetSpacing()
+
+        volume = self.loader(volume_path)  # DHW, zyx
+        label = self.loader(label_path)
+
+        volume, label = self.get_augmentation(volume, label, index_used)
+
+        # 进行形状变换前的对volume进行的一些特殊处理,目前为空
+        volume = self._apply_pre_transform(volume)
+        # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
+        volume, label = self._apply_transform(volume, label)
+        # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
+        volume = self._apply_post_transform(volume)
+
+        # volume, label = crop(volume, label, self.opt.crop_size[::-1], crop_type='center')
+
+        volume = self.to_tensor(volume)  # NCDHW
+        label = self.to_tensor(label)
+        spacing = torch.Tensor(spacing[::-1])
+
+        return {'volume': volume, 'label': label,
+                'volume_path': volume_path, 'label_path': label_path, 'spacing': spacing}
 
 
 class MrusmrDataset(NIIDataset):
@@ -105,7 +197,6 @@ class MrusmrDataset(NIIDataset):
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         volume = self._apply_pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
-        #
         volume, label = self._apply_transform(volume, label)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         volume = self._apply_post_transform(volume)
@@ -116,8 +207,8 @@ class MrusmrDataset(NIIDataset):
         label = self.to_tensor(label)
         spacing = torch.Tensor(spacing[::-1])
 
-        return {'volume': volume, 'label': label,
-                'volume_path': volume_path, 'label_path': label_path, 'spacing': spacing}
+        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
+                'spacing': spacing}
 
     def custom_debug(self, *args, **kwargs):
         print(f'data_size:{self.data_size}')
@@ -151,8 +242,8 @@ class TestMrusmrDataset(BaseDataset):
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
         spacing = sitk.ReadImage(volume_path).GetSpacing()
-        return {'volume': volume, 'label': label,
-                'volume_path': volume_path, 'label_path': label_path, 'spacing': tuple(spacing[::-1])}
+        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
+                'spacing': tuple(spacing[::-1])}
 
     def __len__(self):
         return self.data_size
@@ -207,6 +298,11 @@ class PredictMrusmrDataset(BaseDataset):
         return self.data_size
 
 
+TestMrusmrPlusDataset = TestMrusmrDataset
+
+PredictMrusmrPlusDataset = PredictMrusmrDataset
+
+
 def main():
     parser = argparse.ArgumentParser(description='for the test of promise dataset')
     parser.add_argument('--dataroot', type=str,
@@ -247,6 +343,17 @@ def main():
             start_time = time.time()
 
 
+def test_reading_order(dataroot=r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre12812896', folds=5):
+    print(os.getcwd())
+    for phase in ['test', 'train']:
+        for fold in range(folds):
+            print('{:*^12}'.format(f'{phase}:{fold}'))
+            paths = get_data_path(dataroot, phase, fold)
+            for path in paths:
+                print('{:-^12}'.format(os.path.basename(path['volume']).split('.')[0][:4]))
+
+
 if __name__ == '__main__':
-    main()
+    # main()
+    test_reading_order()
 

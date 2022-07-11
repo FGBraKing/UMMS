@@ -17,7 +17,8 @@ from .combo_loss import *
 from .custom_loss import *
 
 SUPPORTED_LOSSES = ['bdc', 'dc', 'bce', 'ce', 'wce', 'pce', 'asymmetric', 'b_focal', 'focal', 'jsd', 'l1', 'l2', 'mse',
-                    'lovasz', 'BinaryTversky', 'MultiTversky', 'tversky', 'combo', 'others', 'custom', 'custom_regular']
+                    'lovasz', 'BinaryTversky', 'MultiTversky', 'tversky', 'combo', 'others',
+                    'custom', 'custom_regular', 'custom_multimodal']
 
 
 # --------------------------------------------------------CUSTOM------------------------------------------------
@@ -153,7 +154,8 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
 
     elif name == 'custom_regular':
         return RegularLoss()
-
+    elif name == "custom_multimodal":
+        return CustomMultiModalLoss()
     else:
         if 'activate' in kwargs.keys():
             activate = kwargs['activate']

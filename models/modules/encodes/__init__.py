@@ -1,6 +1,11 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
+visible_encoders = [
+    "vgg16", "resnet", "resnext", "densenet", "CSPDarknet53",
+    "senet", "sknet", "resnest", "mobilenet", "efficientnet", "dpn", "drn", "xception", "inceptionV4"
+]
+
 
 # ---------------------------------------Encode ---------------------------------------
 class DummyEncoder(nn.Module):

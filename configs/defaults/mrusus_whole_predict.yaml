@@ -3,9 +3,9 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_Tesla'
+name : 'mrusus12812896_whole_fold0_bs4_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6_2080Ti'
 phase : 'test'
-predict_name : 'centercrop_postprocess'
+predict_name : 'postprocess'
 
 local_gpu : 2
 visible_gpu :  '0,1,2,3'
@@ -13,29 +13,29 @@ visible_gpu :  '0,1,2,3'
 
 revert : false
 do_connected_component : true
-minimum_valid_object_size : 40
+minimum_valid_object_size : 1000
 
-save_visuals : true
+save_visuals : false
 deterministic : True
 single : Ture
 DEBUG : False
 verbose : false
 
-gpu_ids : [0,1]
+gpu_ids : [2,3]
 phase_list : ['train', 'test']
 # ---------------------------------------------------------------------------- #
 # data
 # ---------------------------------------------------------------------------- #
 # dataset
-dataset_name : 'mrusmr'
+dataset_name : 'mrusus'
 fold : 0
 custom : true
-preprocess : 'centercrop'
+preprocess : ''
 #   'centercrop'
 #    'resize'
 #   'zoom_centercrop'
-crop_size : [96, 96, 80]
-target_size : [96, 96, 80]
+crop_size : [128, 128, 96]
+target_size : [128, 128, 96]
 order_data: 3
 order_seg: 1
 scale : [0.8, 0.8, 0.8]
@@ -54,11 +54,11 @@ conv_order : 'crb'
 # ---------------------------------------------------------------------------- #
 # path
 # ---------------------------------------------------------------------------- #
-dataroot : './traces/datasets/MR-USviaFenster20-pre128'
+dataroot : './traces/datasets/MR-USviaFenster20-pre12812896'
 
-weight_path : './traces/checkpoints/mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_Tesla/latest_net_mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_Tesla.pth'
-weight_dir : './traces/checkpoints/mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_Tesla'
-weight_on_dir : false
+weight_path : './traces/checkpoints/mrus12812896_whole/mrusus12812896_whole_fold0_bs4_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6_2080Ti/latest_net_mrusus12812896_whole_fold0_bs4_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6_2080Ti.pth'
+weight_dir : './traces/checkpoints/mrus12812896_whole/mrusus12812896_whole_fold0_bs4_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6_2080Ti'
+weight_on_dir : true
 
 logs_dir : './traces/logs'
 checkpoints_dir : './traces/checkpoints'

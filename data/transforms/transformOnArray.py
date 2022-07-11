@@ -4,25 +4,24 @@ import torch
 import random
 import numpy as np
 import torchvision.transforms as transforms
+
 from itertools import combinations
+from typing import Union, Tuple, Callable, List
 from scipy.signal.signaltools import convolve
 from scipy.ndimage.interpolation import map_coordinates, zoom, rotate, shift, affine_transform
 from scipy.ndimage.filters import gaussian_filter, convolve, median_filter
-from skimage.transform import resize, rescale
 from skimage.filters import gaussian
+from skimage.transform import resize, rescale
 from skimage.segmentation import find_boundaries
 from batchgenerators.augmentations.spatial_transformations import augment_channel_translation
 from batchgenerators.augmentations.resample_augmentations import augment_linear_downsampling_scipy
 from batchgenerators.augmentations.noise_augmentations import augment_blank_square_noise, augment_gaussian_blur, \
     augment_gaussian_noise, augment_rician_noise
 from batchgenerators.augmentations.utils import get_range_val
-from typing import Union, Tuple, Callable, List
-
 from data.transforms.transformOnSample import ResizeTransform, ZoomTransform, RandomScaleTransform, \
     RandomCropTransform, CenterCropTransform, Rot90Transform, RandomRotateTransform, \
-    MirrorTransform, TransposeAxesTransform, RandomShiftTransform, ElasticDeformTransform
+    MirrorTransform, TransposeAxesTransform, RandomShiftTransform, ElasticDeformTransform, RandomCropWithStrideTransform
 from data.transforms.transforms import Compose, ComposeForSample
-
 
 from data.transforms.transformOnSample import RandomFlip, RandomCrop, RandomRotate, CenterCrop, \
     RandomRotate90, RandomScale, resize_3d
@@ -190,6 +189,7 @@ class NormalizeRange:
         self.min_value = min_value
         self.max_value = max_value
         self.dtype = dtype
+        self.eps = 1e-10
 
     def __call__(self, array_in):
         """
@@ -201,7 +201,7 @@ class NormalizeRange:
         """
         arr_min = np.min(array_in)
         arr_max = np.max(array_in)
-        normalized = (array_in - arr_min) / (arr_max - arr_min + 1e-10)
+        normalized = (array_in - arr_min) / (arr_max - arr_min + self.eps)
         return ((self.max_value - self.min_value) * normalized + self.min_value).astype(self.dtype)
 
     def __repr__(self):
@@ -1267,6 +1267,15 @@ class Transformer:
             crop_size_refine = [a+10 for a in opt.crop_size]
             crop_size_refine = crop_size_refine[::-1]
             trans_list.append(RandomCropTransform(crop_size=crop_size_refine, with_channel=False))
+        if 'randomcropwithstride' in preprocess:
+            # 这里不再进行refine，即便旋转后超出边界，也能学到东西。
+            crop_size_refine = [a for a in opt.crop_size]
+            crop_size_refine = crop_size_refine[::-1]
+
+            trans_list.append(RandomCropWithStrideTransform(crop_size=crop_size_refine,
+                                                            margins=(0, 0, 0),
+                                                            strides=opt.crop_stride,
+                                                            with_channel=False))
         if 'ranomrotate' in preprocess:
             # [(-15, 15), (-15, 15), (-15, 15)]
             trans_list.append(RandomRotateTransform(angle_spectrum=[(-opt.rot_angle_spectrum, opt.rot_angle_spectrum)],

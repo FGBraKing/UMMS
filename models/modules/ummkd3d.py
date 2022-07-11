@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
 from collections import OrderedDict
-
-
+from torch.nn import functional as F
 from models.modules.blocks.blocks3d import same_convlution, downsample_convlution, upsample_deconvlution
 
 
@@ -256,11 +254,11 @@ class UnetWithNormSpecficity(nn.Module):
 if __name__ == "__main__":
     from torchsummary import summary
     from functools import partial
-    # from models.auxiliary_hookers import FeatureMapExtractor, FeatureGradientExtractor
     from models.auxiliary_funs import print_model_parm_nums, print_model_parm_flops
+    # from models.auxiliary_hookers import FeatureMapExtractor, FeatureGradientExtractor
 
-    device = torch.device(f"cuda:{0}" if torch.cuda.is_available() else 'cpu')
-    net = UnetWithNormSpecficity(domains=['target', 'source'], norm_type='batch',
+    device = torch.device(f"cuda:{2}" if torch.cuda.is_available() else 'cpu')
+    net = UnetWithNormSpecficity(domains=['target', 'source', 'joint'], norm_type='batch',
                                  in_channels=1, n_class=1, init_channel_number=16, final_sigmoid=True).to(device)
 
     # print('---------------------------------------------------------')
@@ -280,10 +278,10 @@ if __name__ == "__main__":
 
     func_net = partial(net, domain='target')
 
-    inputs = torch.rand((4, 1, 80, 96, 96), requires_grad=True).to(device)  # 64,96,96
+    inputs = torch.rand((2, 1, 112, 128, 128), requires_grad=True).to(device)  # 64,96,96
     print_model_parm_nums(net)  # 40.15M
 
-    out = net(inputs, 'target')
+    out = net(inputs, 'source')
     print(out.size())
 
     print(net.get_L2_norm())

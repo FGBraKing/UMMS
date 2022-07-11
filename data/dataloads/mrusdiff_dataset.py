@@ -1,18 +1,21 @@
 import os
+import time
+import torch
 import argparse
 import numpy as np
+import pandas as pd
+import SimpleITK as sitk
+from copy import copy
+from configs.utils_config import get_pretty_opt
+from data.utils_data import print_data_describe
 from data.dataloads.base_dataset import BaseDataset, CustomDataset, NIIDataset
 from data.transforms.transformOnArray import get_transform, get_pre_transform, get_post_transform, ToTensor
-from configs.utils_config import get_pretty_opt
-from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_to_list
+from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_to_list, Timer
 from utils.others.img_io import show_array_3d, show_volume_label, show_array_histogram, show_pired_histogram
 # from batchgenerators.augmentations.crop_and_pad_augmentations import pad_nd_image_and_seg, crop
-from utils.others.utils import Timer
-import time
-from copy import copy
 
 
-def get_data_path(dataroot, data_phase):
+def get_data_path_old(dataroot, data_phase):
 
     mr_root = os.path.join(dataroot, 'mr'+data_phase)
     us_root = os.path.join(dataroot, 'us'+data_phase)
@@ -26,12 +29,74 @@ def get_data_path(dataroot, data_phase):
     return mr_paths, us_paths
 
 
-def get_source_opt(opt):
+def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
+    pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
+
+    if not isinstance(fold, int):
+        used_ids = pat_ids
+    elif os.path.isfile(os.path.join(dataroot, f'split_{fold}.csv')):
+        split_df = pd.read_csv(os.path.join(dataroot, f'split_{fold}.csv'), keep_default_na=True)
+        test_ids = split_df['test'].dropna().tolist()
+        train_ids = split_df['train'].dropna().tolist()
+        used_ids = test_ids if data_phase == "test" else train_ids
+    else:
+        print('creating the split files!')
+        np.random.RandomState(seed=random_seed).shuffle(pat_ids)
+
+        fold_number = (len(pat_ids)+k_fold-1)//k_fold  # 每折的数量，向上取整比如16=44440
+
+        # split_save
+        for i in range(k_fold):
+            k_fold_dict = {
+                'test': pat_ids[i * fold_number:(i + 1) * fold_number],
+                'train': pat_ids[0:i * fold_number] + pat_ids[(i + 1) * fold_number:]
+            }
+            print(k_fold_dict)
+            k_fold_df = pd.DataFrame.from_dict(k_fold_dict, orient='index')
+            k_fold_df.T.to_csv(os.path.join(dataroot, f'split_{i}.csv'), index=False)
+
+        # all save
+        kfold_dict = dict.fromkeys(range(k_fold))
+        for i in range(k_fold):
+            kfold_dict[i] = {
+                'test': pat_ids[i * fold_number:(i + 1) * fold_number],
+                'train': pat_ids[0:i * fold_number] + pat_ids[(i + 1) * fold_number:]
+            }
+        split_df = pd.DataFrame.from_dict(kfold_dict)
+        split_df.T.to_csv(os.path.join(dataroot, 'split.csv'))
+
+        # print('Please rerun the program!')
+        raise FileExistsError(f'split_{fold}.csv has been created, please rerun the program')
+
+    us_paths = [
+        {
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+        }
+        for p_id in used_ids
+    ]
+
+    mr_paths = [
+        {
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+        }
+        for p_id in used_ids
+    ]
+    # print(us_paths[0], mr_paths[0])
+    # print(os.path.isfile(us_paths[0]['volume']),
+    #       os.path.isfile(us_paths[0]['label']),
+    #       os.path.isfile(mr_paths[0]['volume']),
+    #       os.path.isfile(mr_paths[0]['label']))
+    return mr_paths, us_paths
+
+
+def correct_source_opt(opt):
     opt.crop_size = opt.source_crop_size
     return opt
 
 
-def get_target_opt(opt):
+def correct_target_opt(opt):
     opt.crop_size = opt.target_crop_size
     return opt
 
@@ -46,9 +111,9 @@ class MrusDiffDataset(NIIDataset):
         self.data_size = max(self.us_size, self.mr_size)
 
         self.pre_transform = get_pre_transform(opt)
-        opt = get_source_opt(opt)
+        opt = correct_source_opt(opt)
         self.source_transform = get_transform(opt)
-        opt = get_target_opt(opt)
+        opt = correct_target_opt(opt)
         self.target_transfoem = get_transform(opt)
         self.post_transform = get_post_transform(opt)
         self.to_tensor = ToTensor(expand_dims=True)
@@ -63,6 +128,8 @@ class MrusDiffDataset(NIIDataset):
         us_volume = self.loader(us_path['volume'])
         mr_label = self.loader(mr_path['label'])
         us_label = self.loader(us_path['label'])
+        mr_spacing = sitk.ReadImage(mr_path['volume']).GetSpacing()
+        us_spacing = sitk.ReadImage(us_path['volume']).GetSpacing()
 
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         mr_volume = self._apply_pre_transform(mr_volume)
@@ -80,11 +147,18 @@ class MrusDiffDataset(NIIDataset):
         mr_label = self.to_tensor(mr_label)
         us_volume = self.to_tensor(us_volume)
         us_label = self.to_tensor(us_label)
+        mr_spacing = torch.Tensor(mr_spacing[::-1])
+        us_spacing = torch.Tensor(us_spacing[::-1])
 
         return {'mr_volume': mr_volume, 'mr_volume_path': mr_path['volume'],
-                'mr_label': mr_label, 'mr_label_path': mr_path['label'],
+                'mr_label': mr_label, 'mr_label_path': mr_path['label'], 'mr_spacing': mr_spacing,
                 'us_volume': us_volume, 'us_volume_path': us_path['volume'],
-                'us_label': us_label, 'us_label_path': us_path['label']}
+                'us_label': us_label, 'us_label_path': us_path['label'], 'us_spacing': us_spacing}
+
+    def print_data_describe(self, *args, **kwargs):
+        for phase, case_list in zip(['mr', 'us'], [self.mr_paths, self.us_paths]):
+            print("{:*^120s}".format(phase))
+            print_data_describe(case_list)
 
     def custom_debug(self, *args, **kwargs):
         print(f'data_size:{self.data_size}')

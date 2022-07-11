@@ -2,19 +2,21 @@
 # ------------------------------------------------------------------------------------------------ #
 # modified
 # ------------------------------------------------------------------------------------------------ #
-name : 'mrusmr128_fold4_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6'
+name : 'mrusmr128filter_patch_fold3_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_5x200_0.6'
+suffix : 'compare'
+
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
 # Tesla V100-DGXS-32GB\NVIDIA GeForce RTX 2080 Ti\NVIDIA GeForce GTX 1080 Ti\ NVIDIA TITAN Xp
-dataroot : './traces/datasets/MR-USviaFenster20-pre128'
-fold : 4
+dataroot : './traces/datasets/MR-USviaFenster20-pre12812896-filter'
+fold : 3
 batch_size : 8
-
+# 相比原来的mrus_patch只改了数据集和crop_stride和randomcropwithstride
 gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
-visible_gpu : !!str "'2'"
+visible_gpu : !!str "'3'"
 DEBUG : False
 
-preprocess : 'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
-
+preprocess : 'elastic_randomscale_randomcropwithstride_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+# randomcrop
 init_channel_number : 16
 conv_order : 'cbl'
 
@@ -24,23 +26,24 @@ optimizer_name : 'adam'
 lr : 2e-4
 
 lr_policy : 'poly'
-lr_cycle_num : 2
+lr_cycle_num : 5
 lr_cycle_decay : 0.6
 
-num_epochs : 300
+num_epochs : 200
 decay_epochs : 100
 decay_rate : 0.5
 # 在poly学习率策略中，decay_rate作为power使用
 
 epoch_start : 1
 continue_train : false
+weight_path : './traces/checkpoints/......'
 
 
 # --------------------------------------------------------------------------------------- #
 # 数据参数：包括数据集参数和数据增强参数
 # --------------------------------------------------------------------------------------- #
 # --dataset
-#dataroot : './traces/datasets/MR-USviaFenster20-pre128'
+#dataroot : './traces/datasets/MR-USviaFenster20-pre12812896-filter'
 phase : 'train'
 #fold : 0
 #serial_batches : true
@@ -48,6 +51,7 @@ phase : 'train'
 custom : true
 crop_size : [96, 96, 80]
 target_size : [96, 96, 80]
+crop_stride : [2, 2, 2]
 #order_data: 3
 #order_seg: 1
 #elastic_alpha : [0., 70]
@@ -56,7 +60,7 @@ target_size : [96, 96, 80]
 #scale_range : [0.7, 1.3]
 rot_angle_spectrum: 15
 rot_axes: [1, 2]
-mirror_axes: [1, 2]
+mirror_axes: [0, 1, 2]
 #g_noise_variance: [0.0, 0.1]
 #blur_sigma : [0.5, 1.5]
 #bright_mu : 0.0
@@ -110,7 +114,7 @@ lr_noise : ~
 lr_noise_pct : 0.67
 lr_noise_std : 1.
 
-warmup_lr : 1e-5
+warmup_lr : 1e-6
 warmup_epochs : 20
 warmup_prefix : True
 
@@ -157,13 +161,12 @@ single : True
 #DEBUG : False
 deterministic : True
 # --additional
-suffix : ''
+#suffix : ''
 verbose : true
 # --files path
-logs_dir : './traces/logs'
+logs_dir : './traces/logs/compare'
 results_dir : './traces/results'
-checkpoints_dir : './traces/checkpoints'
-weight_path : './traces/checkpoints/......'
+checkpoints_dir : './traces/checkpoints/compare'
 optimizer_path : ~
 # --basic train
 #epoch_start : 1

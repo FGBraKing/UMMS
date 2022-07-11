@@ -386,7 +386,7 @@ def print_data_describe(data_list, *args, **kwargs):
 
         roi_range = tuple(get_foreground_shape(label, number=10))
         roi_shape = tuple(map(lambda x: x[1] - x[0], roi_range))
-        roi_size = tuple(map(lambda x, y: round(x * y /10, 2), roi_shape, label_spacing))
+        roi_size = tuple(map(lambda x, y: round(x * y / 10, 2), roi_shape, label_spacing))
         scan_size = tuple(map(lambda x, y: round(x * y / 10, 2), label_shape, label_spacing))
         area_rate = label.sum()/label.size
 

@@ -2,29 +2,30 @@
 import os
 import re
 import random
-import nibabel as nib
-
-import matplotlib.pyplot as plt
-import pandas as pd
+import shutil
+import warnings
 import numpy as np
+import pandas as pd
+import nibabel as nib
+import matplotlib.pyplot as plt
 import SimpleITK as sitk
-# from skimage.transform import resize
+
+from glob import glob
+from skimage.transform import resize
 # from scipy.ndimage.interpolation import zoom
 # from scipy.ndimage.interpolation import map_coordinates
+from batchgenerators.augmentations.crop_and_pad_augmentations import crop
+from batchgenerators.utilities.file_and_folder_operations import join, save_json, maybe_mkdir_p
+
 # from data.transforms.transforms import resize_image_itk, Compose
 from data.utils_data import nii_loader, save_nii, print_data_describe
 from data.pre_process.dataset_pre import DatasetPre
 from data.transforms.transformOnArray import standardize
 from data.utils_nnunet import generate_dataset_json
 from data.preprocessing import resample_data_or_seg, get_lowres_axis, get_do_separate_z
-from batchgenerators.utilities.file_and_folder_operations import join, save_json, maybe_mkdir_p
-from utils.others.utils import get_foreground_shape, cut_off_outliers, print_numpy, clip_array, slim_array
-from batchgenerators.augmentations.crop_and_pad_augmentations import crop
+from utils.others.utils import get_foreground_shape, cut_off_outliers, print_numpy, clip_array, get_bbox_from_mask, slim_array
 from utils.others.img_io import show_volume_label, show_image_label
-from utils.others.utils import get_foreground_shape, get_bbox_from_mask
-from glob import glob
-import shutil
-import warnings
+from utils.forDebugs.data_visualizer import show_density_on_one_figure
 
 
 #  The following are not used
@@ -106,7 +107,7 @@ def get_lbs_for_seg_crop(crop_size, data_shape, label_range):
     return lbs
 
 
-def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape):
+def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape, retain=True):
     def crop_img(img, seg, aim_sh):
         img = np.expand_dims(img, axis=0)  # ncxyz
         seg = np.expand_dims(seg, axis=0)  # ncxyz
@@ -126,6 +127,12 @@ def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape):
         print('lbs:', lbs)
         return img[data_slice], seg[data_slice]
 
+    def get_roi_info(label, spacing):
+        roi_range = tuple(get_foreground_shape(label, number=10))
+        roi_shape = tuple(map(lambda x: x[1] - x[0], roi_range))
+        roi_size = tuple(map(lambda x, y: round(x * y / 10, 2), roi_shape, spacing))
+        return roi_range, roi_shape, roi_size
+
     # 实际大小
     s_act_size = np.array(spacing_s) * sVol.shape
     t_act_size = np.array(spacing_t) * tVol.shape
@@ -138,6 +145,21 @@ def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape):
     s_act_spacing = (s_act_size / s_temp_shape).tolist()
     t_temp_shape = np.round(t_act_size / aim_spacing).astype(int)
     t_act_spacing = (t_act_size / t_temp_shape).tolist()
+
+    # 保证roi区域完整
+    if retain:
+        _, _, s_roi_size = get_roi_info(sMask, spacing_s)
+        s_aim_size = np.where(aim_size > s_roi_size, aim_size, s_roi_size)
+        s_aim_spacing = s_aim_size / aim_shape
+        s_temp_shape = np.round(s_act_size / s_aim_spacing).astype(int)
+        s_act_spacing = (s_act_size / s_temp_shape).tolist()
+
+        _, _, t_roi_size = get_roi_info(tMask, spacing_t)
+        t_aim_size = np.where(aim_size > t_roi_size, aim_size, t_roi_size)
+        t_aim_spacing = t_aim_size / aim_shape
+        t_temp_shape = np.round(t_act_size / t_aim_spacing).astype(int)
+        t_act_spacing = (t_act_size / t_temp_shape).tolist()
+
     # 增加维度以方便进行resample
     sVol = np.expand_dims(sVol, axis=0)  # cxyz
     sMask = np.expand_dims(sMask, axis=0)  # cxyz
@@ -153,17 +175,17 @@ def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape):
     # sVol, sMask = crop_img(sVol, sMask, aim_shape)
     # tVol, tMask = crop_img(tVol, tMask, aim_shape)
     # 新裁剪
-    # sVol, sMask = crop_img1(sVol[0], sMask[0], aim_shape)
-    # tVol, tMask = crop_img1(tVol[0], tMask[0], aim_shape)
-    # 不裁剪
-    sVol, sMask = sVol[0], sMask[0]
-    tVol, tMask = tVol[0], tMask[0]
+    sVol, sMask = crop_img1(sVol[0], sMask[0], aim_shape)
+    tVol, tMask = crop_img1(tVol[0], tMask[0], aim_shape)
+    # # 不裁剪
+    # sVol, sMask = sVol[0], sMask[0]
+    # tVol, tMask = tVol[0], tMask[0]
 
     # 归一化
     sVol = standardize(sVol, sVol.mean(), sVol.std())
     tVol = standardize(tVol, tVol.mean(), tVol.std())
     # from RAI to RAS, from xyz to zyx
-    sVol = np.transpose(np.flip(sVol, axis=2), [2, 1, 0])
+    sVol = np.transpose(np.flip(sVol, axis=2), [2, 1, 0])       # WHD, RAI-->DHW, RAS
     sMask = np.transpose(np.flip(sMask, axis=2), [2, 1, 0])
     tVol = np.transpose(np.flip(tVol, axis=2), [2, 1, 0])
     tMask = np.transpose(np.flip(tMask, axis=2), [2, 1, 0])
@@ -171,7 +193,7 @@ def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape):
     return sVol, sMask, s_act_spacing, tVol, tMask, t_act_spacing
 
 
-def process_data(data_root, save_root, aim_shape=(128, 128, 112)):
+def process_data(data_root, save_root, aim_shape=(128, 128, 112), do_filter=True, if_slim=True):
     assert os.path.isdir(data_root), f"{data_root}"
 
     pat_ids = os.listdir(data_root)
@@ -188,12 +210,26 @@ def process_data(data_root, save_root, aim_shape=(128, 128, 112)):
         mr_label_path = os.path.join(data_root, pat_id, f'{pat_id}_MR_Prostate.nii')
 
         us_origin_spacing = sitk.ReadImage(us_path).GetSpacing()    # WHD
-        us_image_data = nib.load(us_path).get_fdata()               # WHD
+        us_image_data = nib.load(us_path).get_fdata()               # WHD, RAI
         us_label_data = nib.load(us_label_path).get_fdata()
 
         mr_origin_spacing = sitk.ReadImage(mr_path).GetSpacing()
         mr_image_data = nib.load(mr_path).get_fdata()
         mr_label_data = nib.load(mr_label_path).get_fdata()
+
+        if do_filter:
+            # cut_off_lower = np.percentile(us_image_data, 25)
+            us_image_data = cut_off_outliers(us_image_data, 25, 99.999)
+            mr_image_data = cut_off_outliers(mr_image_data, 0.001, 99.999)
+
+        if if_slim:
+            img_label_slim = slim_array(np.stack([mr_image_data, mr_label_data], axis=0), dims=(1, 2, 3), number=100)
+            mr_image_data = img_label_slim[0, ...]
+            mr_label_data = img_label_slim[1, ...]
+
+            img_label_slim = slim_array(np.stack([us_image_data, us_label_data], axis=0), dims=(1, 2, 3), number=100)
+            us_image_data = img_label_slim[0, ...]
+            us_label_data = img_label_slim[1, ...]
 
         # print('get_foreground_shape: ', get_foreground_shape(mr_label_data, number=1))
         # print('get_bbox_from_mask: ', get_bbox_from_mask(mr_label_data))
@@ -201,18 +237,19 @@ def process_data(data_root, save_root, aim_shape=(128, 128, 112)):
         # DHW
         mr_data, mr_mask, mr_spacing, us_data, us_mask, us_spacing =\
             do_process(mr_origin_spacing, mr_image_data, mr_label_data,
-                       us_origin_spacing, us_image_data, us_label_data, aim_shape)
+                       us_origin_spacing, us_image_data, us_label_data, aim_shape)  # WHD, RAI-->DHW, RAS
 
         # 保存
         save_mr_volume_path = os.path.join(save_root, pat_id, f'{pat_id}_mr_volume.nii')
         save_us_volume_path = os.path.join(save_root, pat_id, f'{pat_id}_us_volume.nii')
         save_mr_roi_path = os.path.join(save_root, pat_id, f'{pat_id}_mr_roi.nii')
         save_us_roi_path = os.path.join(save_root, pat_id, f'{pat_id}_us_roi.nii')
-        save_nii(save_us_volume_path, us_data, spacing=us_spacing, direction=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0))
+        save_nii(save_us_volume_path, us_data, spacing=us_spacing, direction=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0))    # DHW, RAS
         save_nii(save_mr_volume_path, mr_data, spacing=mr_spacing, direction=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0))
         save_nii(save_us_roi_path, us_mask, spacing=us_spacing, direction=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0))
         save_nii(save_mr_roi_path, mr_mask, spacing=mr_spacing, direction=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0))
-        print('{:*^80} finished!'.format(pat_id))
+        # print('{:*^80} finished!'.format(pat_id))
+        print('{:*^80}'.format('{} finished!'.format(pat_id)))
 
 
 def check_volume_mask_direction(volume, mask, **kwargs):
@@ -235,6 +272,52 @@ def check_all_volume_mask_direction(data_root=r'L:\DATA\temp_data\MR-USviaFenste
         mask = nii_loader(pat_mask_path)
         check_volume_mask_direction(volume, mask, title=pat_id)
         # os.system("pause")
+
+
+def check_all_data_percentile(data_root=r'/home/lf/data_fong/DATA/MR-USviaFenster20', percentile=25, data_flag='US'):
+    patients=[]
+    pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(data_root, a)), os.listdir(data_root)))
+    for i, pat_id in enumerate(pat_ids):
+        pat_volume_path = os.path.join(data_root, pat_id, f'{pat_id}_{data_flag}.nii')
+        pat_mask_path = os.path.join(data_root, pat_id, f'{pat_id}_{data_flag}_Prostate.nii')
+
+        # mr_data = nii_loader(mr_path)
+        us_data = nii_loader(pat_volume_path)
+        print('{:*^60}'.format(pat_id))
+        print_numpy(us_data, shp=True, percentile=True)
+        print(f'percentile_{percentile}:', np.percentile(us_data, percentile))
+        patients.append(us_data.flatten())
+    patients = np.concatenate(patients)
+    print('{:*^60}'.format('all patients'))
+    print_numpy(patients, shp=True, percentile=True)
+    print(f'percentile_{percentile}:', np.percentile(patients, percentile))
+
+
+def check_all_data_density(dataroot=r'/home/lf/data_fong/DATA/MR-USviaFenster20', data_flag='MR'):
+    pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
+
+    for i, p_id in enumerate(pat_ids):
+        if i != 3:
+            continue
+        pat_volume_path = os.path.join(dataroot, p_id, f'{p_id}_{data_flag}.nii')
+        pat_mask_path = os.path.join(dataroot, p_id, f'{p_id}_{data_flag}_Prostate.nii')
+
+        pat_data = nii_loader(pat_volume_path)
+
+        resized_data = resize(pat_data, (96, 128, 128), order=3, preserve_range=True)
+
+        do_data = resized_data
+
+        print('{:*^60}'.format(p_id))
+        show_density_on_one_figure(do_data, None, data_flag, None, title=f'{i + 1}:{p_id}_origin')
+        do_data = cut_off_outliers(do_data, 0.0001, 99.9999)
+        print_numpy(do_data, shp=True, percentile=True)
+        print(np.percentile(do_data, 25))
+        # do_data = cut_off_outliers(do_data, 25, 99.9, per_channel=False)
+        print_numpy(do_data, shp=True, percentile=True)
+        # do_data = resize(do_data, (96, 128, 128), order=3, preserve_range=True, )
+        show_density_on_one_figure(do_data, None, data_flag, None, title=f'{i + 1}:{p_id}_cut25_99.9')
+        # , cumulative=True
 
 
 def one_time_trans_us_to_origin():
@@ -286,15 +369,19 @@ def one_time_copy_datas_to_dirs(src_root=r'L:\DATA\temp_data\Formation__MR-USvia
 
 
 def main():
-    dataroot = r'/home/lf/raid_lf/DATA/MR-USviaFenster20'
-    saveroot = r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre128_ori'
+    dataroot = r'/home/lf/data_fong/DATA/MR-USvia20'
+    saveroot = r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280'
+    # dataroot = r'F:\Code\NEW_doing\UMMS\traces\datasets\MR-USviaFenster20-origin'
+    # saveroot = r'F:\Code\NEW_doing\UMMS\traces\datasets\MR-USviaFenster20-pre12812896-filter'
     if not os.path.exists(saveroot):
         os.mkdir(saveroot)
-    process_data(dataroot, saveroot, aim_shape=(128, 128, 112))
+    process_data(dataroot, saveroot, aim_shape=(112, 112, 80), do_filter=True)
 
 
 if __name__ == "__main__":
     main()
+    # check_all_data_percentile()
+    # check_all_data_density()
     # check_all_volume_mask_direction()
     # tt=nib.orientations.axcodes2ornt(('L','P','I'), (('L', 'R'), ('P', 'A'), ('I', 'S')))
     # print(tt)
@@ -303,3 +390,4 @@ if __name__ == "__main__":
     # aa = nib.orientations.aff2axcodes(aff, (('L', 'R'), ('P', 'A'), ('I', 'S')))
     # print(aa)
     # one_time_copy_datas_to_dirs()
+    pass

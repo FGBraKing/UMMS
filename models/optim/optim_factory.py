@@ -128,6 +128,7 @@ def create_optimizer_v2(
     # basic SGD & related
     if opt_lower == 'sgd' or opt_lower == 'nesterov':
         # NOTE 'sgd' refers to SGD + nesterov momentum for legacy / backwards compat reasons
+        # momentum: 历史梯度权重、nestero：求二次动量累积
         opt_args.pop('eps', None)
         optimizer = optim.SGD(parameters, momentum=momentum, nesterov=True, **opt_args)
     elif opt_lower == 'momentum':

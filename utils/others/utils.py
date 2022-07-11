@@ -382,12 +382,12 @@ def get_user_input():
 
 
 # 去黑边
-def slim_array(array, dims=None, number=100):
-    # print('before slim: {}'.format(array.shape))
+def slim_array(array, dims=None, number=100, background_value=0):
+    print('before slim: {}'.format(array.shape))
     array = np.array(array)
     ndim = array.ndim
     return_array = np.copy(array)
-    ind_non_zero = array != 0
+    ind_non_zero = array != background_value
     for dim in range(ndim):
         if dims is not None:
             if dim not in dims:
@@ -397,9 +397,10 @@ def slim_array(array, dims=None, number=100):
         for i in range(tmp_non_zero.shape[0]):
             if np.sum(tmp_non_zero[i, ...]) < number:
                 del_list.append(i)
-        # print(del_list)
+        if del_list:
+            print(del_list)
         return_array = np.delete(return_array, del_list, axis=dim)
-    # print('after slim: {}'.format(return_array.shape))
+    print('after slim: {}'.format(return_array.shape))
     return return_array
 
 

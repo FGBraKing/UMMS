@@ -5,6 +5,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import SimpleITK as sitk
+from itertools import combinations
 from configs.utils_config import get_pretty_opt
 from data.utils_data import nii_loader
 from data.dataloads.base_dataset import BaseDataset, CustomDataset, NIIDataset
@@ -20,8 +21,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
     if not isinstance(fold, int):
         return [
             {
-                'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+                'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
+                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
             }
             for p_id in pat_ids
         ]
@@ -62,38 +63,96 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
 
     used_ids = test_ids if data_phase == "test" else train_ids
 
-    us_paths = [
+    mr_paths = [
         {
-            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
         }
         for p_id in used_ids
     ]
-    return us_paths
+    return mr_paths
 
 
-class MrususDataset(NIIDataset):
+class MrusmrPlusDataset(NIIDataset):
+    axis_database = (
+        (0,),
+        ((0,), (1,), (1, 2)),
+        ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2), (0, 1, 2)),
+    )
+
     def __init__(self, opt):
-        super(MrususDataset, self).__init__(opt)
+        super(MrusmrPlusDataset, self).__init__(opt)
         self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
-        self.data_size = len(self.paths)
+
+        self.mirror_axes = self.get_mirror_axis(opt.mirror_axes)
+        self.mirror_num = len(self.mirror_axes) + 1                 # self.mirror_num = 8
+        self.rotate_axes = self.get_rot_axis(opt.rot_axes)
+        self.rotate_num = len(self.rotate_axes) * 4                 # self.rotate_num = 4
+
+        self.true_size = len(self.paths)
+        # 顺序是path、mirror、rotate
+        self.data_size = self.true_size*self.mirror_num*self.rotate_num
 
         self.pre_transform = get_pre_transform(opt)
         self.transform = get_transform(opt)
         self.post_transform = get_post_transform(opt)
         self.to_tensor = ToTensor(expand_dims=True)
 
-    def __getitem__(self, index):
+    @staticmethod
+    def get_mirror_axis(axes):
+        length = len(axes)
+        all_result = []
+        for i in range(length):
+            all_result += list(combinations(axes, i+1))
+        return tuple(all_result)
 
+    @staticmethod
+    def get_rot_axis(axes):
+        return tuple(combinations(axes, 2))
+
+    def get_rot_data(self, data, index):
+        index = index % (self.mirror_num*self.rotate_num)
+        index = index % self.rotate_num
+        axis_num = index // 4
+        index = index % 4
+        rot_num = index // 1
+        data = np.rot90(data, rot_num, axes=self.rotate_axes[axis_num])
+        return data
+
+    def get_mirror_data(self, data, index):
+        index = index % (self.mirror_num*self.rotate_num)
+        index = index // self.rotate_num
+        if index == 0:
+            return data
+        else:
+            return np.flip(data, self.mirror_axes[index-1])
+
+    def get_data_index(self, index):
+        return index // (self.mirror_num*self.rotate_num)
+
+    def get_augmentation(self, data, seg, index):
+        data = self.get_mirror_data(data, index)
+        data = self.get_rot_data(data, index)
+
+        seg = self.get_mirror_data(seg, index)
+        seg = self.get_rot_data(seg, index)
+        return data, seg
+
+    def __getitem__(self, index):
         index_used = self._get_used_index(index)
 
-        volume_path = self.paths[index_used]['volume']
-        label_path = self.paths[index_used]['label']
+        data_index = self.get_data_index(index_used)
+
+        volume_path = self.paths[data_index]['volume']
+        label_path = self.paths[data_index]['label']
 
         spacing = sitk.ReadImage(volume_path).GetSpacing()
 
-        volume = self.loader(volume_path)   # DHW, zyx
+        volume = self.loader(volume_path)  # DHW, zyx
         label = self.loader(label_path)
+
+        volume, label = self.get_augmentation(volume, label, index_used)
+
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         volume = self._apply_pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
@@ -103,35 +162,17 @@ class MrususDataset(NIIDataset):
 
         # volume, label = crop(volume, label, self.opt.crop_size[::-1], crop_type='center')
 
-        volume = self.to_tensor(volume)
+        volume = self.to_tensor(volume)  # NCDHW
         label = self.to_tensor(label)
         spacing = torch.Tensor(spacing[::-1])
 
-        return {'volume': volume, 'label': label,
-                'volume_path': volume_path, 'label_path': label_path, 'spacing': spacing}
-
-    def custom_debug(self, *args, **kwargs):
-        print(f'data_size:{self.data_size}')
-        for index in range(self.data_size):
-            if index < 10:
-                tt = self.__getitem__(index)
-                print(tt['volume_path'])
-                # print(tt['volume'].shape)
-                # print(type(tt['volume']))
-                data = tt['volume'].cpu().numpy()
-                label = tt['label'].cpu().numpy()
-                print(type(label), label.shape)
-                print(type(data), data.shape)
-                title = os.path.basename(tt['volume_path']).split('.')[0]
-                print_numpy(data, shp=True, percentile=True)
-                # show_array_3d(data[0, ...], 4, 4)
-                show_volume_label(data[0, ...], label[0, ...], row=4, col=4, title=title)
-                # show_array_3d(label[0, ...], 4, 4)
+        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
+                'spacing': spacing}
 
 
-class TestMrususDataset(BaseDataset):
+class TestMrusmrPlusDataset(BaseDataset):
     def __init__(self, opt, loader=nii_loader):
-        super(TestMrususDataset, self).__init__(opt)
+        super(TestMrusmrPlusDataset, self).__init__(opt)
         self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
         self.data_size = len(self.paths)
         self.loader = loader
@@ -142,17 +183,16 @@ class TestMrususDataset(BaseDataset):
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
         spacing = sitk.ReadImage(volume_path).GetSpacing()
-        return {'volume': volume, 'label': label,
-                'volume_path': volume_path, 'label_path': label_path, 'spacing': tuple(spacing[::-1])}
+        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
+                'spacing': tuple(spacing[::-1])}
 
     def __len__(self):
         return self.data_size
 
 
-class PredictMrususDataset(BaseDataset):
+class PredictMrusmrPlusDataset(BaseDataset):
     def __init__(self, opt, loader=nii_loader):
-        # save the option and dataset root
-        super(PredictMrususDataset, self).__init__(opt)
+        super(PredictMrusmrPlusDataset, self).__init__(opt)
 
         self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)  # should be [{'volume':volume,'label':label},...]
         self.data_size = len(self.paths)
@@ -199,39 +239,43 @@ class PredictMrususDataset(BaseDataset):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='for the test of promise dataset')
-    parser.add_argument('--dataroot', type=str,
-                        default=r'/home/lf/raid_lf/PROJECT/DLForPytorch/traces/datasets/MR-USviaFenster20_pre')
-    parser.add_argument('--phase', type=str, default='ustrain')
-    parser.add_argument('--seed', type=int, default=1008)
-    parser.add_argument('--preprocess', type=str, default=r'elastic_randomscale_randomcrop_ranomrotate_centercrop_'
-                                                          r'rot90_mirror_gaussianNoise_GaussianBlur_'
-                                                          r'BrightnessMultiplicative_contrast_simulate_gammatransform')
-    parser.add_argument('--serial_batches', action='store_true')
-    parser.add_argument('--custom', action='store_true')
-    parser.add_argument('--rot_axes', type=list, default=[2, 1], help='the rot90 axes')
-    parser.add_argument('--order_data', type=int, default=3)
-    parser.add_argument('--order_seg', type=int, default=1)
-    parser.add_argument('--elastic_alpha', type=list, default=[0., 900])
-    parser.add_argument('--elastic_sigma', type=list, default=[9., 13.])
-    parser.add_argument('--scale_range', type=list, default=[0.85, 1.25])
-    parser.add_argument('--crop_size', type=list, default=[128, 128, 128])
-    opt = parser.parse_args(args=['--serial_batches', '--custom'])
-    # opt.preprocess = r'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_' \
-    #                  r'GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+    from types import SimpleNamespace
+    kwargs = {
+        "dataroot": r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280',
+        "phase": "train",
+        "seed": 1008,
+        "fold": 2,
+        "preprocess": r'elastic_randomscale_randomcropwithstride_ranomrotate_centercrop_gaussianNoise_GaussianBlur_'
+                      r'BrightnessMultiplicative_contrast_simulate_gammatransform',
+        "serial_batches": True,
+        "custom": True,
+        "mirror_axes": [0,1,2],
+        "rot_axes": [2, 1],
+        "rot_angle_spectrum": 30,
+        "order_data": 3,
+        "order_seg": 1,
+        "elastic_alpha": [0., 70],
+        "elastic_sigma": [8., 12.],
+        "scale_range": [0.7, 1.3],
+        "crop_size": [80, 80, 64],
+        "crop_stride": 2,
+        "g_noise_variance": [0.0, 0.1],
+        "bright_multiplier_range": [0.7, 1.3],
+        "contrast_range": [0.65, 1.35],
+        "simulate_zoom_range": [0.5, 1.0],
+        "gamma_range": (0.7, 1.3),
+    }
+
+    opt = SimpleNamespace(**kwargs)
     opt.random_state = np.random.RandomState(seed=opt.seed)
-
-    # opt.preprocess = r'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_' \
-    #                  r'gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
-
     print(get_pretty_opt(opt))
-    dataset = MrususDataset(opt)
+    dataset = MrusmrPlusDataset(opt)
     print(len(dataset))
     with Timer('running with custom_debug, using time:%ss'):
         # dataset.custom_debug()
         start_time = time.time()
         for ind, test_data in enumerate(dataset):
-            print('using time:%s'%(time.time()-start_time))
+            print('using time:%s' % (time.time()-start_time))
             if ind > 100:
                 break
             print(ind)
@@ -239,6 +283,17 @@ def main():
             start_time = time.time()
 
 
+def test_reading_order(dataroot=r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280', folds=5):
+    print(os.getcwd())
+    for phase in ['test', 'train']:
+        for fold in range(folds):
+            print('{:*^12}'.format(f'{phase}:{fold}'))
+            paths = get_data_path(dataroot, phase, fold)
+            for path in paths:
+                print('{:-^12}'.format(os.path.basename(path['volume']).split('.')[0][:4]))
+
+
 if __name__ == '__main__':
     main()
+    # test_reading_order()
 

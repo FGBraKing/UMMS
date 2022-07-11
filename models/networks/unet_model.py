@@ -8,16 +8,15 @@ import torch.nn as nn
 import torch.cuda.amp
 
 from types import SimpleNamespace
-from .base_model import BaseModel
 from models.modules.segmentation_model.unet_custom import UnetCustom
+from models.networks.base_model import BaseModel
 from models.loss import losses, get_loss_criterion
-from models.auxiliary_funs import get_init_func, get_activation
 from models.optim import create_optimizer, create_optimizer_v2
 from models.scheduler import create_scheduler
+from models.auxiliary_funs import get_init_func, get_activation
 from utils.others.metrics import BinaryMetrics, SoftMetrics
 from utils.others.distributed_utils import reduce_mean
 from utils.others.utils import print_numpy
-
 from test import test_during_train
 
 ddp_logger = logging.getLogger('ddp_logger')
@@ -212,7 +211,7 @@ class UnetModel(BaseModel):
             'batch_size': self.opt.slide_test_batchsize,
             'num_threads': self.opt.num_threads,
             'crop_size': self.opt.crop_size,
-            'stride': (16, 16, 16),
+            'stride': (16, 16, 8),
             'no_augment': True,
             'visual_names': ('segment', 'label', 'origin_volume'),
             'metric_names': ('DC', 'recall', 'precision', 'specificity', 'accuracy')

@@ -372,6 +372,18 @@ class Mish(nn.Module):
         return x
 
 
+class Swish(nn.Module):
+    '''
+    x * torch.tanh(torch.nn.functional.softplus(x))
+    '''
+    def __init__(self):
+        super(Swish, self).__init__()
+
+    def forward(self, x):
+        x = x * F.sigmoid(x)
+        return x
+
+
 class Activation(nn.Module):
     def __init__(self, name, **params):
         super().__init__()
@@ -511,14 +523,16 @@ def get_activation(activation, **kwargs):
         return nn.Identity(**kwargs)
     if str(activation).lower() == "relu":
         return nn.ReLU(inplace=True)
+    elif activation == 'lrelu':
+        return nn.LeakyReLU(0.2, inplace=True)
+    elif str(activation).lower() == "mish":
+        return Mish()
     elif str(activation).lower() == "elu":
         return nn.ELU(alpha=1., inplace=True)
     elif str(activation).lower() == "leakyrelu":
         return nn.LeakyReLU(negative_slope=2e-1, inplace=True)
     elif str(activation).lower() == "prelu":
         return nn.PReLU(num_parameters=1, init=0.25)
-    elif activation == 'lrelu':
-        return nn.LeakyReLU(0.2, inplace=True)
     elif str(activation).lower() == "relu6":
         return nn.ReLU6(inplace=True)
     elif str(activation).lower() == "rrelu":
@@ -527,8 +541,6 @@ def get_activation(activation, **kwargs):
         return nn.CELU(inplace=True)
     elif str(activation).lower() == "selu":
         return nn.SELU(inplace=True)
-    elif str(activation).lower() == "mish":
-        return Mish()
     elif str(activation).lower() == "sigmoid":
         return nn.Sigmoid()
     elif str(activation).lower() == "softmax":

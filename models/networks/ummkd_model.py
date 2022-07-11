@@ -5,20 +5,19 @@ import torch.distributed
 import torch.nn as nn
 import torch.cuda.amp
 import torch.nn.functional as F
-
 from functools import partial
 from types import SimpleNamespace
-from .base_model import BaseModel
+from collections import OrderedDict, defaultdict
+from models.modules.ummkd3d import UnetWithNormSpecficity
+from models.networks.base_model import BaseModel
 from models.loss import losses, get_loss_criterion
-from models.auxiliary_funs import get_init_func, get_activation
 from models.optim import create_optimizer, create_optimizer_v2
 from models.scheduler import create_scheduler
+from models.auxiliary_funs import get_init_func, get_activation
 from utils.others.metrics import BinaryMetrics, SoftMetrics
 from utils.others.distributed_utils import reduce_mean
 from utils.others.utils import print_numpy
-from collections import OrderedDict, defaultdict
 
-from models.modules.ummkd3d import UnetWithNormSpecficity
 
 ddp_logger = logging.getLogger('ddp_logger')
 
@@ -26,10 +25,12 @@ ddp_logger = logging.getLogger('ddp_logger')
 def define_ummkd(opt, device):
     assert not(opt.DDP and opt.DP)
 
-    net = UnetWithNormSpecficity(['source', 'target'], 'batch', opt.input_nc, opt.output_nc,
+    net = UnetWithNormSpecficity(domains=['source', 'target'],
+                                 norm_type='batch',
+                                 in_channels=opt.input_nc,
+                                 n_class=opt.output_nc,
                                  deptp=4, init_channel_number=opt.init_channel_number, final_sigmoid=False)
 
-    # init_net(net, opt.init_type, opt.init_gain, opt.gpu_ids)
     init_func = get_init_func(init_type=opt.init_type, init_gain=opt.init_gain)
     net.apply(init_func)
 
@@ -68,30 +69,31 @@ class UmmkdModel(BaseModel):
         self.net_umms = define_ummkd(opt, self.device)
         self.finally_activate = get_activation('sigmoid').to(self.device)
 
-        # 'combo_source', 'combo_target',
-        self.loss_names = ['dice_source', 'dice_target', 'bce_source', 'bce_target', 'l2', 'total']
+        self.loss_names = ['regular', 'routine', 'total']
 
         if self.isTrain:
-            other_loss_kwargs = {}
-            self.criterionDice = get_loss_criterion(name='bdc',
-                                                    ignore_index=opt.ignore_index,
-                                                    reduction=opt.reduction,
-                                                    use_sigmoid=True,
-                                                    eps=1e-7,
-                                                    smooth=1.0,
-                                                    **other_loss_kwargs).to(self.device)
-            self.criterionBCE = get_loss_criterion(name='bce',
-                                                   ignore_index=opt.ignore_index,
-                                                   reduction=opt.reduction,
-                                                   weight=1,
-                                                   smooth=0.01,
-                                                   eps=1e-7,
-                                                   )
-
-            self.criterionL2 = getattr(losses, 'l2_regularization')
+            # other_loss_kwargs = {}
+            # self.criterionDice = get_loss_criterion(name='bdc',
+            #                                         ignore_index=opt.ignore_index,
+            #                                         reduction=opt.reduction,
+            #                                         use_sigmoid=True,
+            #                                         eps=1e-7,
+            #                                         smooth=1.0,
+            #                                         **other_loss_kwargs).to(self.device)
+            # self.criterionBCE = get_loss_criterion(name='bce',
+            #                                        ignore_index=opt.ignore_index,
+            #                                        reduction=opt.reduction,
+            #                                        weight=1,
+            #                                        smooth=0.01,
+            #                                        eps=1e-7,
+            #                                        )
+            #
+            # self.criterionL2 = getattr(losses, 'l2_regularization')
+            self.criterionRoutine = get_loss_criterion(name='custom_multimodal')
+            self.criterionRegular = get_loss_criterion(name='custom_regular')
 
             optimizer_kwargs = {'eps': 1e-8,
-                                'betas': (0.9, 0.999)
+                                'betas': (opt.optim_beta, 0.999)
                                 }
             if 'sgd' in opt.optimizer_name.lower():
                 optimizer_kwargs.pop('betas', None)
@@ -104,27 +106,25 @@ class UmmkdModel(BaseModel):
 
             self.optimizers.append(self.optimizer)
             self.schedulers = [create_scheduler(opt, optimizer)[0] for optimizer in self.optimizers]
+
         # specify the images you want to save/display.
-        self.visual_names = ['source_y', 'target_y', 'source_seg', 'target_seg']
-        self.metric_names = ['DC', 'recall', 'precision', 'specificity', 'accuracy']
+        self.visual_names = ['volume', 'predict', 'label']
+        self.metric_names = ['DC', 'recall', 'precision', 'specificity', 'accuracy', 'roisize']
+        # 'hd' 'hd95' 'assd' 'asd'  'ravd'
 
         self.get_metrics = BinaryMetrics()
         self.get_metrics_soft = SoftMetrics(smooth=0., eps=1e-6)
 
-        self.source = None
-        self.target = None
-        self.source_y = None
-        self.target_y = None
-        self.source_seg = None
-        self.target_seg = None
+        self.source_volume = None
+        self.target_volume = None
+        self.source_label = None
+        self.target_label = None
+        self.source_predict = None
+        self.target_predict = None
+        self.spacing = None
 
-        self.loss_dice_source = None
-        self.loss_dice_target = None
-        self.loss_bce_source = None
-        self.loss_bce_target = None
-        # self.loss_combo_source = None
-        # self.loss_combo_target = None
-        self.loss_l2 = None
+        self.loss_routine = None
+        self.loss_regular = None
         self.loss_total = None
 
         self.metric_dict_source = None
@@ -137,40 +137,28 @@ class UmmkdModel(BaseModel):
 
         self.is_activated = False
 
-    def set_input(self, input):
-        self.source = input['mr_volume'].to(self.device)   # bs C D H W, C=1
-        self.source_y = input['mr_label'].to(self.device)     # bs C D H W, C=1
-        self.target = input['us_volume'].to(self.device)   # bs C D H W, C=1
-        self.target_y = input['us_label'].to(self.device)     # bs C D H W, C=1
-        self.volume_path = [{'source_path': input['mr_volume_path'], 'target_path': input['us_volume_path']}]
-        self.label_path = [{'source_y_path': input['mr_label_path'], 'target_y_path': input['us_label_path']}]
+    def set_input(self, inputs):
+        self.source_volume = inputs['mr_volume'].to(self.device)   # bs C D H W, C=1
+        self.source_label = inputs['mr_label'].to(self.device)     # bs C D H W, C=1
+        self.target_volume = inputs['us_volume'].to(self.device)   # bs C D H W, C=1
+        self.target_label = inputs['us_label'].to(self.device)     # bs C D H W, C=1
+        self.volume_path = {'source': inputs['mr_volume_path'], 'target': inputs['us_volume_path']}
+        self.label_path = {'source': inputs['mr_label_path'],  'target': inputs['us_label_path']}
+        self.spacing = {'source': inputs['mr_spacing'].mean(0).tolist(), 'target': inputs['us_spacing'].mean(0).tolist()}
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         with self.autocast_context():
-            self.source_seg = self.net_umms(self.source, 'source')
-            self.target_seg = self.net_umms(self.target, 'target')
+            self.source_predict = self.net_umms(self.source_volume, 'source')
+            self.target_predict = self.net_umms(self.target_volume, 'target')
         self.is_activated = False
-
-    def get_seg_loss(self, predict, target):
-        dice = self.criterionDice(predict, target)
-        bce = self.criterionBCE(predict, target)
-        return dice+bce
 
     def backward(self):
         with self.autocast_context():
-            self.loss_dice_source = self.criterionDice(self.source_seg, self.source_y)
-            self.loss_dice_target = self.criterionDice(self.target_seg, self.target_y)
-            self.loss_bce_source = self.criterionBCE(self.source_seg, self.source_y)
-            self.loss_bce_target = self.criterionBCE(self.target_seg, self.target_y)
-            # self.loss_combo_source = self.get_seg_loss(self.source_y, self.source_seg)
-            # self.loss_combo_target = self.get_seg_loss(self.target_y, self.target_seg)
-            self.loss_l2 = self.criterionL2(self.net_umms.parameters())
-
-        self.loss_total = (1.5*self.loss_dice_source + 0.75*self.loss_dice_target
-                           + 1.5*self.loss_bce_source + 0.75*self.loss_bce_target
-                           + 1.5e-4*self.loss_l2)
-
+            self.loss_item_dict, self.loss_routine = self.criterionRoutine(self.source_predict, self.source_label,
+                                                                           self.target_predict, self.target_label)
+            self.loss_regular = self.criterionRegular(self.net_umms.parameters())
+            self.loss_total = self.loss_routine + 2e-4 * self.loss_regular
         self.loss_total = self.loss_total / self.opt.gradient_accumulation_k_step
 
         if self.opt.use_mixed_precision:
@@ -193,27 +181,28 @@ class UmmkdModel(BaseModel):
 
     def compute_visuals(self):
         if not self.is_activated:
-            self.source_seg = self.finally_activate(self.source_seg)
-            self.target_seg = self.finally_activate(self.target_seg)
+            self.source_predict = self.finally_activate(self.source_predict)
+            self.target_predict = self.finally_activate(self.target_predict)
             self.is_activated = True
 
     def compute_metrics(self, *args, **kwargs):
         if not self.is_activated:
-            self.source_seg = self.finally_activate(self.source_seg)
-            self.target_seg = self.finally_activate(self.target_seg)
+            self.source_predict = self.finally_activate(self.source_predict)
+            self.target_predict = self.finally_activate(self.target_predict)
             self.is_activated = True
 
-        self.metric_dict_source = self.compute_metrics_base(self.source_seg.clone().detach(),
-                                                            self.source_y.clone().detach())
-        self.metric_dict_target = self.compute_metrics_base(self.target_seg.clone().detach(),
-                                                            self.target_y.clone().detach())
+        self.metric_dict_source = self.compute_metrics_base(self.source_predict.clone().detach(),
+                                                            self.source_label.clone().detach(), 'source')
+        self.metric_dict_target = self.compute_metrics_base(self.target_predict.clone().detach(),
+                                                            self.target_label.clone().detach(), 'target')
 
-    def compute_metrics_base(self, predict, label, *args, **kwargs):
+    def compute_metrics_base(self, predict, label, domain, *args, **kwargs):
         keys = tuple(self.metric_names) + args
 
         predict = (predict > 0.5).float()
         label = (label > 0.5).float()
-        metrics = self.get_metrics_soft(predict, label, *self.metric_names, *args, **kwargs)
+        metrics = self.get_metrics_soft(predict, label, *self.metric_names,
+                                        *args, **kwargs, voxelspacing=self.spacing[domain])
 
         if self.opt.DDP:
             for i in range(len(metrics)):
@@ -221,6 +210,9 @@ class UmmkdModel(BaseModel):
                     metrics[i] = reduce_mean(metrics[i], torch.distributed.get_world_size())
 
         metric_dict = dict(zip(keys, metrics))
+        if 'roisize' in keys:
+            metric_dict['roisize'] = predict.sum().item() / predict.numel()
+
         return metric_dict
 
     def get_current_metrics(self):
@@ -230,6 +222,14 @@ class UmmkdModel(BaseModel):
                 metrics_ret['source'+name] = self.metric_dict_source[name]
                 metrics_ret['target'+name] = self.metric_dict_target[name]
         return metrics_ret
+
+    def get_current_visuals(self):
+        visual_ret = OrderedDict()
+        for name in self.visual_names:
+            if isinstance(name, str):
+                visual_ret['source_'+name] = getattr(self, 'source_'+name)
+                visual_ret['target_'+name] = getattr(self, 'target_'+name)
+        return visual_ret
 
 
 def main():

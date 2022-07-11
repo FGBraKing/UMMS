@@ -195,6 +195,21 @@ class CBL(nn.Module):
         return self.model(inputs)
 
 
+class CBM(nn.Module):
+    def __init__(self, in_planes, out_planes, dilation=1, use_bias=False):
+        super(CBM, self).__init__()
+        padding = dilation
+        blocks = [
+            conv3x3x3(in_planes, out_planes, padding=padding, dilation=dilation, use_bias=use_bias),
+            nn.BatchNorm3d(out_planes),
+            Mish()
+        ]
+        self.model = nn.Sequential(*blocks)
+
+    def forward(self, inputs):
+        return self.model(inputs)
+
+
 class CBS(nn.Module):
     def __init__(self, in_planes, out_planes, dilation=1, use_bias=False):
         super(CBS, self).__init__()
@@ -212,7 +227,7 @@ class CBS(nn.Module):
 
 def create_conv_block(in_channels, out_channels, kernel_size, order, num_groups, padding):
     assert 'c' in order, "Conv layer MUST be present"
-    assert order[0] not in 'rle', 'Non-linearity cannot be the first operation in the layer'
+    assert order[0] not in 'rlems', 'Non-linearity cannot be the first operation in the layer'
 
     model = nn.Sequential()
 
@@ -221,12 +236,12 @@ def create_conv_block(in_channels, out_channels, kernel_size, order, num_groups,
             model.add_module('ReLU', nn.ReLU(inplace=True))
         elif char == 'l':
             model.add_module('LeakyReLU', nn.LeakyReLU(inplace=True))
+        elif char == 'm':
+            model.add_module('mish', Mish())
         elif char == 'e':
             model.add_module('ELU', nn.ELU(inplace=True))
         elif char == 's':
             model.add_module('Swish', nn.SiLU(inplace=True))
-        elif char == 'm':
-            model.add_module('mish', Mish())
         elif char == 'c':
             # add learnable bias only in the absence of batchnorm/groupnorm
             bias = not ('g' in order or 'b' in order)
@@ -431,6 +446,20 @@ class DCBL(nn.Module):
             deconvlution(in_planes, out_planes, use_bias=use_bias),
             nn.BatchNorm3d(out_planes),
             nn.LeakyReLU(negative_slope=slope, inplace=True)
+        ]
+        self.model = nn.Sequential(*blocks)
+
+    def forward(self, inputs):
+        return self.model(inputs)
+
+
+class DCBM(nn.Module):
+    def __init__(self, in_planes, out_planes, use_bias=False):
+        super(DCBM, self).__init__()
+        blocks = [
+            deconvlution(in_planes, out_planes, use_bias=use_bias),
+            nn.BatchNorm3d(out_planes),
+            Mish()
         ]
         self.model = nn.Sequential(*blocks)
 

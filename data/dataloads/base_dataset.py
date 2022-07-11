@@ -98,10 +98,11 @@ class H5Dataset(CustomDataset):
 
 
 class TestOnePatientDataset(data.Dataset):
-    axis_database = ((0,),
-                     ((0,), (1,)),
-                     ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2)),
-                     )
+    axis_database = (
+        (0,),
+        ((0,), (1,), (1, 2)),
+        ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2), (0, 1, 2)),
+    )
 
     def __init__(self, origin_volume, opt, **pad_kwargs):
         '''

@@ -79,7 +79,18 @@ def create_test_dataset(opt):
     # test_arg_dict['bright_sigma'] = opt.bright_sigma
     # test_arg_dict['bright_mu'] = opt.bright_mu
 
-    dataset_class = find_dataset_using_name(opt.dataset_name)
+    dataset_filename = "data.dataloads." + opt.dataset_name + "_dataset"
+    datasetlib = importlib.import_module(dataset_filename)
+    dataset_class = None
+    target_dataset_name = 'predict' + opt.dataset_name.replace('_', '') + 'dataset'
+    for name, cls in datasetlib.__dict__.items():
+        if name.lower() == target_dataset_name.lower() and issubclass(cls, BaseDataset):
+            dataset_class = cls
+    if dataset_class is None:
+        raise NotImplementedError("In %s.py, there should be a subclass of BaseDataset with class name "
+                                  "that matches %s in lowercase." % (dataset_filename, target_dataset_name))
+
+    # dataset_class = find_dataset_using_name(opt.dataset_name)
     dataset = dataset_class(SimpleNamespace(**test_arg_dict))
     ddp_logger.warning(" test dataset [%s] was created" % type(dataset).__name__)
 

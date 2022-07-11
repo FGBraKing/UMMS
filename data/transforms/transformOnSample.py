@@ -654,6 +654,82 @@ class RandomCropTransform:
         return data, seg
 
 
+class RandomCropWithStrideTransform:
+    def __init__(self, crop_size=128, margins=(0, 0, 0), strides=1, with_channel=False):
+        self.crop_size = crop_size
+        self.margins = margins
+        self.strides = strides
+        self.with_channel = with_channel
+
+    @staticmethod
+    def get_lbs_for_random_crop_with_stride(crop_size, data_shape, margins, stride):
+        lbs = []
+        for i in range(len(data_shape)):
+            if data_shape[i] - crop_size[i] - margins[i] > margins[i]:
+                sample_points = list(range(margins[i], data_shape[i] - crop_size[i] - margins[i], stride[i]))
+                lbs.append(np.random.choice(sample_points, size=1).item())
+            else:
+                lbs.append((data_shape[i] - crop_size[i]) // 2)
+        return lbs
+
+    def __call__(self, data, seg=None, *args, **kwargs):
+        assert isinstance(data, np.ndarray), "data has to be a numpy array"
+
+        data_shape = data.shape
+
+        if seg is not None:
+            assert isinstance(seg, np.ndarray), "seg has to be a numpy array"
+            seg_shape = seg.shape
+            assert data_shape == seg_shape,  "data and seg must have the same spatial dimensions. " \
+                                             "Data: %s, seg: %s" % (str(data_shape), str(seg_shape))
+
+        if self.with_channel:
+            crop_data_dim = len(data_shape) - 1
+            crop_data_shape = data_shape[1:]
+        else:
+            crop_data_dim = len(data_shape)
+            crop_data_shape = data_shape
+
+        if type(self.crop_size) not in (tuple, list, np.ndarray):
+            self.crop_size = [self.crop_size] * crop_data_dim
+        else:
+            assert len(self.crop_size) == crop_data_dim, "If you provide a list/tuple as center crop make sure it has the same dimension as your data (2d/3d)"
+        if not isinstance(self.margins, (np.ndarray, tuple, list)):
+            self.margins = [self.margins] * crop_data_dim
+        else:
+            assert len(self.margins) == crop_data_dim, "If you provide a list/tuple as margins make sure it has the same dimension as your data (2d/3d)"
+        if not isinstance(self.strides, (np.ndarray, tuple, list)):
+            self.strides = [self.strides] * crop_data_dim
+        else:
+            assert len(self.strides) == crop_data_dim, "If you provide a list/tuple as strides make sure it has the same dimension as your data (2d/3d)"
+
+        lbs = self.get_lbs_for_random_crop_with_stride(self.crop_size, crop_data_shape, self.margins, self.strides)
+        need_to_pad = [[abs(min(0, lbs[d])), abs(min(0, crop_data_shape[d] - (lbs[d] + self.crop_size[d])))]
+                       for d in range(crop_data_dim)]
+        ubs = [min(lbs[d] + self.crop_size[d], crop_data_shape[d]) for d in range(crop_data_dim)]
+        lbs = [max(0, lbs[d]) for d in range(crop_data_dim)]
+
+        if self.with_channel:
+            slicer_data = [slice(0, data_shape[1])] + [slice(lbs[d], ubs[d]) for d in range(crop_data_dim)]
+        else:
+            slicer_data = [slice(lbs[d], ubs[d]) for d in range(crop_data_dim)]
+
+        pad_mode = 'constant'
+        pad_kwargs = {'constant_values': 0}
+        pad_mode_seg = 'constant'
+        pad_kwargs_seg = {'constant_values': 0}
+
+        data = data[tuple(slicer_data)]
+        if any([i > 0 for j in need_to_pad for i in j]):
+            data = np.pad(data, need_to_pad, pad_mode, **pad_kwargs)
+
+        if seg is not None:
+            seg = seg[tuple(slicer_data)]
+            if any([i > 0 for j in need_to_pad for i in j]):
+                seg = np.pad(seg, need_to_pad, pad_mode_seg, **pad_kwargs_seg)
+        return data, seg
+
+
 class RandomShiftTransform:
     def __init__(self, shift_mu, shift_sigma, p_per_sample=1, p_per_channel=0.5, border_value=0, with_channel=False):
         """

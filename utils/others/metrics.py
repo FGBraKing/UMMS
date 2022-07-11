@@ -185,6 +185,42 @@ class BinaryMetrics:
         target = target.astype(np.bool)
         return metric.ravd(predict, target)
 
+    def get_volume_correlation(self, predict, target, **kwargs):
+        predict = predict > self.threshold
+        target = target.astype(np.bool)
+        return metric.volume_correlation(predict, target)
+
+    def get_volume_change_correlation(self, predict, target, **kwargs):
+        predict = predict > self.threshold
+        target = target.astype(np.bool)
+        return metric.volume_change_correlation(predict, target)
+
+    def get_obj_assd(self, predict, target, **kwargs):
+        if 'voxelspacing' in kwargs.keys():
+            voxelspacing = kwargs['voxelspacing']
+        else:
+            voxelspacing = None
+        if 'connectivity' in kwargs.keys():
+            connectivity = kwargs['connectivity']
+        else:
+            connectivity = 1
+        predict = predict > self.threshold
+        target = target.astype(np.bool)
+        return metric.obj_assd(predict, target, voxelspacing, connectivity)
+
+    def get_obj_asd(self, predict, target, **kwargs):
+        if 'voxelspacing' in kwargs.keys():
+            voxelspacing = kwargs['voxelspacing']
+        else:
+            voxelspacing = None
+        if 'connectivity' in kwargs.keys():
+            connectivity = kwargs['connectivity']
+        else:
+            connectivity = 1
+        predict = predict > self.threshold
+        target = target.astype(np.bool)
+        return metric.obj_asd(predict, target, voxelspacing, connectivity)
+
     def get_precision(self, SR, GT, **kwargs):
         TP, FN, TN, FP = self.get_basic_metrics(SR, GT)
         return float(TP) / (float(TP + FP) + self.eps)

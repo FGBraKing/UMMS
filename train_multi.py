@@ -2,25 +2,26 @@ import os
 import sys
 import time
 import logging
+# import matplotlib
 import numpy as np
 import torch.distributed
-
+from pprint import pprint
+from matplotlib import pyplot as plt
+from configs.simple_options import get_opt
+from configs.utils_config import pretty_print_opt, get_pretty_opt
 from data import create_dataset, create_test_dataset
 from models import create_model
 from utils.forLogs import Visualizer, get_logger
-from utils.others.utils import init_seed, init_torch, print_numpy, mkdirs
+from utils.others.utils import init_seed, init_torch, print_numpy, mkdirs, DataPool, get_device_name
 from utils.others.distributed_utils import record_distribute_ddp, torch_distributed_zero_first
-from utils.others.img_io import show_image, show_paired_image
-from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict
-from configs.simple_options import get_opt
-from configs.utils_config import pretty_print_opt, get_pretty_opt
-from pprint import pprint
-from matplotlib import pyplot as plt
-# import matplotlib
+from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict, show_image, show_paired_image
 # matplotlib.use('TKAgg')
 
 
-# 不能用两层映射，在DDP的时候，rank=1，必须用device号也为1的gpu；否则会阻塞不动。。。。。。
+save_threshold = 0.99
+pool_size = 3
+
+
 def set_local_gpu(args):
     if not args.DDP:
         # args.local_rank = args.gpu_ids[0] if args.gpu_ids else -1
@@ -51,7 +52,9 @@ def do_train(opt):
           'you had got (dist_backend, dist_url, world_size, rank, local_rank) ready')
     print('CUDA_VISIBLE_DEVICES: '+os.environ['CUDA_VISIBLE_DEVICES'])
 
-    # 修补一个参数不能PicklingError的bug
+    device_name = get_device_name()
+    opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
+    # ====================================================配置gpu等全局变量==============================================
     opt.random_state = np.random.RandomState(seed=opt.seed)
 
     # print(torch.cuda.is_available())
@@ -94,7 +97,7 @@ def do_train(opt):
     time_logger = get_logger(logname='time_logger', level=logging.INFO if on_master else logging.WARNING, is_save=False,
                              fmt="[%(process)d]%(message)s")    # [%(thread)d]
 
-    # ddp_logger.warning(get_pretty_opt(opt))
+    # ========================================数据,模型,初始化、优化器、学习率策略========================================
 
     dataloader = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
     dataset_size = len(dataloader)    # get the number of images in the dataset.
@@ -110,7 +113,8 @@ def do_train(opt):
     ddp_logger.warning('model get ready')
 
     if opt.lr_policy in ['poly', 'tanh', 'cosine']:
-        opt.num_epochs = model.get_schedulers()[0].get_cycle_length() + opt.cooldown_epochs
+        # 更正num_epochs
+        opt.num_epochs = model.get_schedulers()[0].get_cycle_length(opt.lr_cycle_num) + opt.cooldown_epochs
 
     optimize_parameters = model.optimize_parameters_with_apex if opt.APEX else model.optimize_parameters
     save_networks = model.save_for_apex if opt.APEX else model.save_networks
@@ -119,7 +123,7 @@ def do_train(opt):
         visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
         ddp_logger.info('visualizer get ready')
         if opt.draw_model:
-            [visualizer.draw_model_graph(net, shape=[4, 1, 128, 128, 128]) for net in model.get_models()]
+            [visualizer.draw_model_graph(net, shape=[4, 1]+list(opt.crop_size[::-1])) for net in model.get_models()]
     else:
         visualizer = None
 
@@ -134,16 +138,15 @@ def do_train(opt):
     else:
         opt.gradient_accumulation_k_step = 1
 
+    # ==================================================开始训练=======================================================
     ddp_logger.warning('start training! on local_rank:{}'.format(opt.local_rank))
 
     total_iters = 0                # the total number of training iterations
-    std_test_metrics_dice = 0.88
-    now_test_metrics_dice = {'source': 0.0, 'target': 0.0}
-    best_test_metrics_dice = {'source': 0.0, 'target': 0.0}
-    best_test_metrics_epoch = {'source': 0, 'target': 0}
+    source_test_pool = DataPool(pool_size, save_threshold)
+    target_test_pool = DataPool(pool_size, save_threshold)
+
     for epoch in range(opt.epoch_start, opt.num_epochs + 1):
         if epoch == 1 and opt.continue_train is False and opt.DDP is True:
-            # 因为DDP封装时似乎会保证各进程状态相同，所以这个部分似乎可以不用，但用了也问题不大。
             ddp_logger.info('saving networks and than load!')
             # 保证每个进程的网络初始权重相同
             load_networks = model.load_for_apex if opt.APEX else model.load_networks
@@ -161,26 +164,39 @@ def do_train(opt):
         if not opt.serial_batches:
             dataloader.set_epoch(epoch)
         model.update_learning_rate(epoch)   # update learning rates in the beginning/ending of every epoch.
-
         model.zero_grad_optimizers()
 
-        # torch.cuda.synchronize()
         time_logger.info('Time epoch prepare: %d sec' % (time.time() - epoch_start_time))
-        # 训练一个epoch
+        # ++++++++++++++++++++++++++++++++++++++++++++++训练一个epoch+++++++++++++++++++++++++++++++++++++++++++
         epoch_iter = 0
         iter_data_time = time.time()
         for batch_idx, data in enumerate(dataloader, 1):
-            # torch.cuda.synchronize()
             iter_start_time = time.time()
 
             total_iters += opt.batch_size
             epoch_iter += opt.batch_size
 
+            if opt.DEBUG and batch_idx == 1:
+                # volume_name = os.path.basename(data['mr_volume_path'][0]).split('.')[0]
+                # volume = data['mr_volume']
+                # label = data['mr_label']
+                # test_volume = volume[0, 0].clone().detach().cpu().numpy()
+                # test_label = label[0, 0].clone().detach().cpu().numpy()
+                # print('{:*^100}'.format('volume'))
+                # print_numpy(test_volume, shp=True)
+                # # print('{:*^100}'.format('label'))
+                # # print_numpy(test_label, shp=False)
+                # show_volume_label(test_volume, test_label, interval=2, add_line=True,
+                #                   row=3, col=2, title=f'one {volume_name}')
+                # # input("Press enter key to close this window")
+                # # os.system("pause")
+                # time.sleep(5)
+                pass
+
             model.set_input(data)
             optimize_parameters(batch_idx % opt.gradient_accumulation_k_step == 0)
             # 计算当前训练数据的metrics、losses、lrs， 使用visualizer绘图并打印
             if total_iters % opt.print_freq == 0 or total_iters % opt.plot_freq == 0:
-                # 因为要reduce结果，所以全部进程都要进行计算
                 # torch.cuda.synchronize()
                 t_data = iter_start_time - iter_data_time
                 t_comp = (time.time() - iter_start_time) / opt.batch_size
@@ -220,29 +236,27 @@ def do_train(opt):
                     model.compute_visuals()
                     visuals = model.get_current_visuals()
                     # ['predict', 'label']
-                    if opt.DEBUG and batch_idx == 1 and epoch == 1:
-                        pass
-                        # pprint(data['volume_path'])
-                        # volume = visuals['volume']
-                        # label = visuals['label']
-                        # predict = visuals['predict']
-                        # volume_name = os.path.basename(data['volume_path'][0]).split('.')[0]
-                        #
+                    if opt.DEBUG and batch_idx == 1:
+                        # volume_name = os.path.basename(data['mr_volume_path'][0]).split('.')[0]
+                        # volume = visuals['source_volume']
+                        # label = visuals['source_label']
+                        # predict = visuals['source_predict']
                         # test_volume = volume[0, 0].clone().detach().cpu().numpy()
                         # test_label = label[0, 0].clone().detach().cpu().numpy()
                         # test_predict = predict[0, 0].clone().detach().cpu().numpy()
-                        #
                         # print('{:*^100}'.format('volume'))
                         # print_numpy(test_volume, shp=False)
-                        # # print('label')
+                        # print('{:*^100}'.format('label'))
                         # print_numpy(test_label, shp=False)
-                        # # print('predict')
+                        # print('{:*^100}'.format('predict'))
                         # print_numpy(test_predict, shp=False)
-                        #
-                        # # show_volume_label(test_volume, test_label, row=4, col=4, title=f'one {volume_name}')
-                        # # show_volume_label(test_label, test_predict, row=4, col=4, title=f'two {volume_name}')
-                        # # , fix_num=True, max_num=8, fig_list=fig_list
+                        # show_volume_label_predict(volume, label, predict, interval=2, add_line=True,
+                        #                           row=3, col=2, title=f'one {volume_name}')
 
+                        # show_volume_label(test_volume, test_label, row=4, col=4, title=f'one {volume_name}')
+                        # show_volume_label(test_label, test_predict, row=4, col=4, title=f'two {volume_name}')
+                        # , fix_num=True, max_num=8, fig_list=fig_list
+                        pass
                     if opt.display_histogram:
                         for name, image in visuals.items():
                             visualizer.add_histogram(name, image, total_iters)
@@ -280,134 +294,112 @@ def do_train(opt):
                     save_suffix = 'iter_%d' % total_iters if opt.save_by_iter else 'latest'
                     save_networks(save_suffix)
 
-            # 这里似乎并不需要同步
-            # if opt.DDP:
-            #     torch.distributed.barrier()
-            # torch.cuda.synchronize()
             iter_data_time = time.time()
 
-        # torch.cuda.synchronize()
         time_logger.info('Time all iteration on epoch Taken: %d sec' % (time.time() - epoch_start_time))
+        # ++++++++++++++++++++++++++++++++++++用测试数据测试当前epoch的模型+++++++++++++++++++++++++++++++++++++++
+        if opt.test_on_train:
+            if epoch % opt.val_epoch_freq == 0 and epoch > 1:
+                ddp_logger.info('Test start of epoch %d / %d \t' % (epoch, opt.num_epochs))
 
-        # 用测试数据测试当前epoch训练完后的模型性能
-        if opt.test_on_train and epoch % opt.val_epoch_freq == 0:
-            ddp_logger.info('Test start of epoch %d / %d \t' % (epoch, opt.num_epochs))
+                test_start_time = time.time()
+                if opt.eval:
+                    model.eval()
 
-            test_start_time = time.time()
-            if opt.eval:
-                model.eval()
+                test_metrics_all = []
+                for test_batch_idx, test_data in enumerate(test_dataloader):
+                    # if test_batch_idx==3:
+                    #     print(1)
+                    model.set_input(test_data)
+                    model.test()
 
-            test_metrics_all = []
-            for test_batch_idx, test_data in enumerate(test_dataloader):
-                if test_batch_idx==3:
-                    print(1)
-                model.set_input(test_data)
-                model.test()
+                    test_metrics = model.get_current_metrics()
+                    test_visuals = model.get_current_visuals()
+                    test_metrics_all.append(test_metrics)
 
-                test_metrics = model.get_current_metrics()
-                test_visuals = model.get_current_visuals()
-                test_metrics_all.append(test_metrics)
+                    if on_master:
+                        visualizer.print_current_test_metrics(test_metrics, epoch, test_batch_idx)
+                        visualizer.plot_current_losses(0, 0, test_metrics, test_batch_idx,
+                                                       tag='test metrics over paitent')
+                        if opt.DEBUG and test_batch_idx == 1 and epoch == 1:
+                            pass
+
+                        if opt.save_visuals:
+                            with torch_distributed_zero_first(opt.local_rank):
+                                if opt.save_only_latest:
+                                    name = 'latest-test'
+                                    visualizer.save_visuals(test_visuals, name)
+                                elif total_iters % opt.save_visuals_frep == 0:
+                                    # name = 'epoch-{}-epoch_iter-{}'.format(epoch, epoch_iter)
+                                    name = 'epoch-{}-epoch_iter-{}-test'.format(epoch, epoch_iter)
+                                    visualizer.save_visuals(test_visuals, name)
+
+                        if opt.display_on_tensorboard:
+                            for name, image in test_visuals.items():
+                                if image.ndim == 5:  # N C D H W
+                                    N, C, D, H, W = image.shape
+                                    for c in range(C):
+                                        for d in range(D):
+                                            for n in range(N):
+                                                visualizer.show_current_images({name+'N:{} C:{} D:{}'.format(n, c, d): image[n, c, d]}, epoch, suffix=' on test')
+
+                now_test_metrics = combine_metrics(test_metrics_all)
+
+                save_for_source = source_test_pool.update(epoch, now_test_metrics['sourceDC'])
+                save_for_target = target_test_pool.update(epoch, now_test_metrics['targetDC'])
 
                 if on_master:
-                    visualizer.print_current_test_metrics(test_metrics, epoch, test_batch_idx)
-                    visualizer.plot_current_losses(0, 0, test_metrics, test_batch_idx,
-                                                   tag='test metrics over paitent')
-                    if opt.DEBUG and test_batch_idx == 1 and epoch == 1:
-                        pass
-                        # pprint(test_data['volume_path'])
-                        # volume = test_visuals['volume']
-                        # label = test_visuals['label']
-                        # predict = test_visuals['predict']
-                        # volume_name = os.path.basename(test_data['volume_path'][0]).split('.')[0]
-                        #
-                        # test_volume = volume[0, 0].clone().detach().cpu().numpy()
-                        # test_label = label[0, 0].clone().detach().cpu().numpy()
-                        # test_predict = predict[0, 0].clone().detach().cpu().numpy()
-                        #
-                        # print('{:*^100}'.format(' test volume'))
-                        # print_numpy(test_volume, shp=False)
-                        # # print('test_label')
-                        # print_numpy(test_label, shp=False)
-                        # # print('test_predict')
-                        # print_numpy(test_predict, shp=False)
-                        #
-                        # # show_volume_label(test_volume, test_label, row=4, col=4, title=f'test one {volume_name}')
-                        # #
-                        # # show_volume_label(test_label, test_predict, row=4, col=4, title=f'test two {volume_name}')
+                    visualizer.print_current_test_metrics(now_test_metrics, epoch, -1)
+                    visualizer.plot_current_losses(0, 0, now_test_metrics, epoch, tag='test metrics over epoch')
+                    if save_for_target or save_for_source:
+                        ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+                        save_networks('latest')
+                        save_networks(epoch)
+                        visualizer.add_text(opt.name, f'saving checkpoint on {epoch}', total_iters)
 
-                    if opt.save_visuals:
-                        with torch_distributed_zero_first(opt.local_rank):
-                            if opt.save_only_latest:
-                                name = 'latest-test'
-                                visualizer.save_visuals(test_visuals, name)
-                            elif total_iters % opt.save_visuals_frep == 0:
-                                # name = 'epoch-{}-epoch_iter-{}'.format(epoch, epoch_iter)
-                                name = 'epoch-{}-epoch_iter-{}-test'.format(epoch, epoch_iter)
-                                visualizer.save_visuals(test_visuals, name)
+                model.train()
+                ddp_logger.info('Test end of epoch %d / %d \t Time Taken: %d sec'
+                                % (epoch, opt.num_epochs, time.time()-test_start_time))
 
-                    if opt.display_on_tensorboard:
-                        for name, image in test_visuals.items():
-                            if image.ndim == 5:  # N C D H W
-                                N, C, D, H, W = image.shape
-                                for c in range(C):
-                                    for d in range(D):
-                                        for n in range(N):
-                                            visualizer.show_current_images({name+'N:{} C:{} D:{}'.format(n, c, d): image[n, c, d]}, epoch, suffix=' on test')
-
-            now_test_metrics = combine_metrics(test_metrics_all)
-            now_test_metrics_dice['source'] = now_test_metrics['sourceDC']
-            now_test_metrics_dice['target'] = now_test_metrics['targetDC']
-            if now_test_metrics_dice['source'] > best_test_metrics_dice['source']:
-                best_test_metrics_epoch['source'] = epoch
-                best_test_metrics_dice['source'] = now_test_metrics_dice['source']
-            elif now_test_metrics_dice['target'] > best_test_metrics_dice['target']:
-                best_test_metrics_epoch['target'] = epoch
-                best_test_metrics_dice['target'] = now_test_metrics_dice['target']
-
-            if on_master:
-                visualizer.print_current_test_metrics(now_test_metrics, epoch, -1)
-                visualizer.plot_current_losses(0, 0, now_test_metrics, epoch,
-                                               tag='test metrics over epoch')
-            model.train()
-            ddp_logger.info('Test end of epoch %d / %d \t Time Taken: %d sec'
-                            % (epoch, opt.num_epochs, time.time()-test_start_time))
+        elif on_master and epoch > opt.save_epoch_start and (epoch-opt.save_epoch_start) % opt.save_epoch_freq == 0:
+            # cache our model every <save_epoch_freq> epochs
+            ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+            save_networks('latest')
+            save_networks(epoch)
+            visualizer.add_text(opt.name, f'saving checkpoint on {epoch}', total_iters)
 
         ddp_logger.info('End of epoch %d / %d \t Time Taken: %d sec' %
                         (epoch, opt.num_epochs, time.time() - epoch_start_time))
 
-        # 按照epoch保存checkpoint
-        # 根据需要保存optimizer和apex的state_dict
-        if on_master:
-            if epoch > 500:
-                if (now_test_metrics_dice['source'] >= best_test_metrics_dice['source']
-                        and now_test_metrics_dice['target'] >= best_test_metrics_dice['target']):
-                    ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
-                    save_networks('latest')
-                    save_networks(epoch)
-                    visualizer.add_text(opt.name, f'saving checkpoint on {epoch}', total_iters)
-            elif (now_test_metrics_dice['source'] > std_test_metrics_dice
-                  or now_test_metrics_dice['target'] > std_test_metrics_dice
-                  and (epoch > opt.save_epoch_start and (epoch-opt.save_epoch_start) % opt.save_epoch_freq == 0)):
-                # cache our model every <save_epoch_freq> epochs
-                ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
-                save_networks('latest')
-                save_networks(epoch)
-                visualizer.add_text(opt.name, f'saving checkpoint on {epoch}', total_iters)
+    if on_master:
+        ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (opt.num_epochs, total_iters))
+        save_networks('latest')
+        save_networks(opt.num_epochs)
+        visualizer.add_text(opt.name, f'saving checkpoint on {opt.num_epochs}', total_iters)
 
     ddp_logger.info('end training!')
-    opt_logger.info(f'best_test_metrics_epoch: {best_test_metrics_epoch}\n'
-                    f'best_test_metrics_dice: {best_test_metrics_dice}')
+    best_source_epoch, best_source_dice = source_test_pool.get_best_data()
+    best_target_epoch, best_target_dice = target_test_pool.get_best_data()
+    opt_logger.info(f'best_source_epoch: {best_source_epoch}\n'
+                    f'best_source_dice: {best_source_dice}\n'
+                    f'best_target_epoch: {best_target_epoch}\n'
+                    f'best_target_dice: {best_target_dice}\n'
+                    )
 
     if visualizer:
+        visualizer.record_test_metrics_message('source:')
+        visualizer.record_test_metrics_message(source_test_pool.get_complete_data())
+        visualizer.record_test_metrics_message('target:')
+        visualizer.record_test_metrics_message(target_test_pool.get_complete_data())
         visualizer.close()
     ddp_logger.info('visualizer closed!')
 
-    # 尝试修复一个进程不完全关闭的bug
     if opt.DDP:
         torch.distributed.barrier()
         torch.distributed.destroy_process_group()
 
-    sys.exit(0)
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+    return
 
 
 def combine_metrics(metrics_list):
@@ -430,7 +422,9 @@ def combine_metrics(metrics_list):
 
 
 if __name__ == '__main__':
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
     train()
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
 
 
 

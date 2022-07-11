@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_Tesla'
+name : 'mrusus128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_Tesla'
 phase : 'test'
 predict_name : 'centercrop_postprocess'
 
@@ -27,7 +27,7 @@ phase_list : ['train', 'test']
 # data
 # ---------------------------------------------------------------------------- #
 # dataset
-dataset_name : 'mrusmr'
+dataset_name : 'mrusus'
 fold : 0
 custom : true
 preprocess : 'centercrop'

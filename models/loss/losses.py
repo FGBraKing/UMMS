@@ -39,15 +39,29 @@ class KDLoss(nn.Module):
             raise ValueError
         logits_mask_out = logits * p_mask
         logits_avg = torch.sum(logits_mask_out, [0, 2, 3, 4]) / (torch.sum(mask) + self.eps)  # C*1 (A 交 B/A)
-        if self.n_class>=2:
+        if self.n_class >= 2:
             soft_prob = F.softmax(torch.tensor(logits_avg/self.temperature),  dim=1)
         else:
-            soft_prob = F.sigmoid(torch.tensor(logits_avg/self.temperature))
+            logit_avg_neg = - logits_avg
+            soft_prob_pos = F.sigmoid(torch.tensor(logits_avg/self.temperature))
+            soft_prob_neg = F.sigmoid(torch.tensor(logits_avg/self.temperature))
+            soft_prob = torch.stact([soft_prob_pos, soft_prob_neg])
         return soft_prob
 
     def forward(self, source_logits, source_gt, target_logits, target_gt):
         # source_logits source_gt target_logits target_gt : n,C,h,w
         kd_loss = 0.0
+
+        if self.n_class == 1:
+            s_soft_prob = self._cal_soft_prob(source_logits, source_gt[:, 0, :, :, :])
+            t_soft_prob = self._cal_soft_prob(target_logits, target_gt[:, 0, :, :, :])
+            s_soft_prob_neg = self._cal_soft_prob(-source_logits, 1-source_gt[:, 0, :, :, :])
+            t_soft_prob_neg = self._cal_soft_prob(-target_logits, 1-target_gt[:, 0, :, :, :])
+            pos_loss = (torch.sum(s_soft_prob * torch.log(s_soft_prob/t_soft_prob)) +
+                        torch.sum(t_soft_prob * torch.log(t_soft_prob/s_soft_prob))) / 2.0
+            neg_loss = (torch.sum(s_soft_prob_neg * torch.log(s_soft_prob_neg/t_soft_prob_neg)) +
+                        torch.sum(t_soft_prob_neg * torch.log(t_soft_prob_neg/s_soft_prob_neg))) / 2.0
+            kd_loss = (pos_loss + neg_loss) / 2
 
         for i in range(self.n_class):
             s_soft_prob = self._cal_soft_prob(source_logits, source_gt[:, i:i+1, :, :, :])
@@ -78,16 +92,18 @@ class CSALoss(nn.Module):
         '''
         b0,m,d0,h0,w0 = features_l.size()
         b1,n,d1,h1,w1 = features_k.size()
-        assert b0==b1 and d0==d1 and h0==h1 and w0==w1
+        assert b0 == b1 and d0 == d1 and h0 == h1 and w0 == w1
         if mask is not None:
-            assert mask.size(1)==1
-            s_c = torch.sum(mask, dim=(1,2,3,4)).reshape(-1,1,1) # b,1,1
-            features_l = features_l * F.interpolate(mask, (d0,h0,w0), mode='nearest', align_corners=True)
-            features_k = features_k * F.interpolate(mask, (d1,h1,w1), mode='nearest', align_corners=True)
-
-        features_l_norm = features_l.view(b0,m,-1) / torch.norm(features_l.view(b0,m,-1), dim=-1, keepdim=True)  # b,m,d*h*w
-        features_k_norm = features_k.view(b1,n,-1) / torch.norm(features_k.view(b1,n,-1), dim=-1, keepdim=True)  # b,n,d*h*w
-        csa = torch.bmm(features_l_norm, features_k_norm.transpose(1,2))    # b,m,n
+            assert mask.size(1) == 1
+            s_c = torch.sum(mask, dim=(1, 2, 3, 4)).reshape(-1, 1, 1)  # b,1,1
+            features_l = features_l * F.interpolate(mask, (d0, h0, w0), mode='nearest', align_corners=True)
+            features_k = features_k * F.interpolate(mask, (d1, h1, w1), mode='nearest', align_corners=True)
+        torch.linalg.norm()
+        features_l_norm = features_l.view(b0, m, -1) / torch.norm(features_l.view(b0, m, -1), dim=-1, keepdim=True)  # b,m,d*h*w
+        features_k_norm = features_k.view(b1, n, -1) / torch.norm(features_k.view(b1, n, -1), dim=-1, keepdim=True)  # b,n,d*h*w
+        # torch.linalg.norm==torch.norm
+        # 文章中似乎用的是cos求相似度，所以前面先求了单位向量
+        csa = torch.bmm(features_l_norm, features_k_norm.transpose(1, 2))    # b,m,n
         return csa / s_c
 
     def forward(self,
@@ -96,8 +112,8 @@ class CSALoss(nn.Module):
         classes = source_mask.size(1)
         csa_loss = 0.0
         for i in range(classes):
-            source_csa = self._cal_csa_matrix(source_features_l, source_features_k, source_mask[:,i:i+1,...])
-            target_csa = self._cal_csa_matrix(target_features_l, target_features_k, target_mask[:,i:i+1,...])
+            source_csa = self._cal_csa_matrix(source_features_l, source_features_k, source_mask[:, i:i+1, ...])
+            target_csa = self._cal_csa_matrix(target_features_l, target_features_k, target_mask[:, i:i+1, ...])
             loss = F.mse_loss(source_csa, target_csa, reduction=self.reduction)
             csa_loss += loss
         csa_loss = csa_loss / classes

@@ -2,24 +2,23 @@ import os
 import sys
 import time
 import logging
+# import matplotlib
 import numpy as np
 import torch.distributed
 from pprint import pprint
-
+from matplotlib import pyplot as plt
+from configs.simple_options import get_opt
+from configs.utils_config import pretty_print_opt, get_pretty_opt
 from data import create_dataset, create_test_dataset, create_slide_test_dataset
 from models import create_model
 from utils.forLogs import Visualizer, get_logger
 from utils.others.utils import init_seed, init_torch, print_numpy, mkdirs, DataPool, get_device_name
 from utils.others.distributed_utils import record_distribute_ddp, torch_distributed_zero_first
-from utils.others.img_io import show_image, show_paired_image
-from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict
-from configs.simple_options import get_opt
-from configs.utils_config import pretty_print_opt, get_pretty_opt
-from matplotlib import pyplot as plt
-# import matplotlib
+from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict, show_image, show_paired_image
+
 # matplotlib.use('TKAgg')
 
-save_threshold = 0.70
+save_threshold = 0.9
 pool_size = 3
 
 
@@ -45,14 +44,11 @@ def train():
     # opt = ProjectOptions().parse(True)   # get training options
     # opt = get_opt(args=None)
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml', '--use_config'])
-    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_unet_train.yaml', '--use_config', '--use_current_local_rank'])
+    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_whole_train.yaml', '--use_config', '--use_current_local_rank'])
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml','--use_config', '--use_current_local_rank'])
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
     assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
-
-    device_name = get_device_name()
-    opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
 
     do_train(opt)
 
@@ -62,6 +58,8 @@ def do_train(opt):
           'you had got (dist_backend, dist_url, world_size, rank, local_rank) ready')
     print('CUDA_VISIBLE_DEVICES: '+os.environ['CUDA_VISIBLE_DEVICES'])
 
+    device_name = get_device_name()
+    opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
     # ====================================================配置gpu等全局变量==============================================
     opt.random_state = np.random.RandomState(seed=opt.seed)
 
@@ -434,7 +432,6 @@ def do_train(opt):
         visualizer.close()
     ddp_logger.info('visualizer closed!')
 
-    # 尝试修复一个进程不完全关闭的bug
     if opt.DDP:
         torch.distributed.barrier()
         torch.distributed.destroy_process_group()
