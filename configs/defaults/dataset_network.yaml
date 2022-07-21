@@ -16,6 +16,7 @@
 dataroot : './traces/datasets/prostate_daf3d_pre'
 phase : 'train'
 fold : 0
+fake_shufflt: False
 #serial_batches : true
 custom : true
 preprocess : 'elastic_randomscale_randomcropwithstride_ranomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
@@ -127,6 +128,7 @@ name : 'trus_unet3d_DDP_Sybn_crop128_bs5x4_ch32_kaiming_dc_adam_2e-4_step_0.2_wa
 # 训练策略： DDP/DP、SyncBatchNorm、use_mixed_precision、use_gradient_accumulation、APEX
 dataset_name : 'trus'
 model_name : 'unet3d'
+network_type: ~
 #seed : 1008
 gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
 visible_gpu : !!str "'0,''1,''2,''3'"

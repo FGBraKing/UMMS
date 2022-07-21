@@ -18,11 +18,11 @@ class CustomLoss(nn.Module):
         self.w_region = 1.0       #
         self.w_distribution = 1.0
 
-        self.pos_weight = 2.0   # Few samples
+        self.pos_weight = 1.0   # Few samples
 
         self.gamma = 2          # hard sample
 
-        self.alpha_fp = 1       # precision
+        self.alpha_fp = 2       # precision
         self.beta_fn = 1        # recall
 
         self.wbce = WBCEWithLogitLoss(weight=self.pos_weight,

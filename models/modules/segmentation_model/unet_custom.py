@@ -260,10 +260,10 @@ if __name__ == "__main__":
 
     # func_net = partial(net, domain='target')
 
-    summary(net, input_size=(1, 80, 96, 96), batch_size=1, device='cuda')
+    summary(net, input_size=(1, 80, 112, 112), batch_size=1, device='cuda')
 
-    inputs = torch.rand((4, 1, 80, 96, 96), requires_grad=True).cuda()
-    print_model_parm_nums(net)  # 40.15M
+    inputs = torch.rand((4, 1, 64, 80, 80), requires_grad=True).cuda()
+    print_model_parm_nums(net)  # 6.3170M
 
     out = net(inputs)
     print(out.size())

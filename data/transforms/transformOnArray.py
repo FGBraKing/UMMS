@@ -1276,7 +1276,7 @@ class Transformer:
                                                             margins=(0, 0, 0),
                                                             strides=opt.crop_stride,
                                                             with_channel=False))
-        if 'ranomrotate' in preprocess:
+        if 'randomrotate' in preprocess:
             # [(-15, 15), (-15, 15), (-15, 15)]
             trans_list.append(RandomRotateTransform(angle_spectrum=[(-opt.rot_angle_spectrum, opt.rot_angle_spectrum)],
                                                     axes=list(combinations(np.unique(opt.rot_axes), 2)),

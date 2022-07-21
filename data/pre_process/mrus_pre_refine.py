@@ -90,8 +90,9 @@ def get_lbs_for_seg_crop(crop_size, data_shape, label_range):
 
     for i in range(len(data_shape)):
         if crop_size[i] < (label_range[i][1] - label_range[i][0] + 1):
+            print(i, 'crop size can not cover the ROI')
             warnings.warn('crop size can not cover the ROI')
-            lbs.append((label_range[i][1] - label_range[i][0])//2 - crop_size[i]//2)
+            lbs.append(max((label_range[i][1] + label_range[i][0])//2 - crop_size[i]//2, 0))
         else:
             # 左右两边剩下多少个点
             l_left = label_range[i][0] - 0
@@ -119,18 +120,18 @@ def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape, retain
         return img, seg
 
     def crop_img1(img, seg, aim_sh):
-        lab_range = get_foreground_shape(seg, number=10)
-        print(aim_sh, img.shape, lab_range)
+        lab_range = get_foreground_shape(seg, number=1)
         lbs = get_lbs_for_seg_crop(aim_sh, img.shape, lab_range)
-
+        print(aim_sh, img.shape, lab_range, lbs)
         data_slice = tuple([slice(lbs[i], lbs[i]+aim_sh[i]) for i in range(len(lbs))])
-        print('lbs:', lbs)
+        # print('lbs:', lbs)
         return img[data_slice], seg[data_slice]
 
     def get_roi_info(label, spacing):
-        roi_range = tuple(get_foreground_shape(label, number=10))
-        roi_shape = tuple(map(lambda x: x[1] - x[0], roi_range))
-        roi_size = tuple(map(lambda x, y: round(x * y / 10, 2), roi_shape, spacing))
+        roi_range = tuple(get_foreground_shape(label, number=1))
+        roi_shape = tuple(map(lambda x: x[1] - x[0]+2, roi_range))
+        roi_size = tuple(map(lambda x, y: x * y, roi_shape, spacing))
+        # round(x * y / 10, 2)
         return roi_range, roi_shape, roi_size
 
     # 实际大小
@@ -159,6 +160,9 @@ def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape, retain
         t_aim_spacing = t_aim_size / aim_shape
         t_temp_shape = np.round(t_act_size / t_aim_spacing).astype(int)
         t_act_spacing = (t_act_size / t_temp_shape).tolist()
+    if s_temp_shape[2]<aim_shape[2]:
+        print("=========================================wrong on==============================================")
+    print(s_temp_shape, s_act_spacing, t_temp_shape, t_act_spacing)
 
     # 增加维度以方便进行resample
     sVol = np.expand_dims(sVol, axis=0)  # cxyz
@@ -193,7 +197,7 @@ def do_process(spacing_s, sVol, sMask, spacing_t, tVol, tMask, aim_shape, retain
     return sVol, sMask, s_act_spacing, tVol, tMask, t_act_spacing
 
 
-def process_data(data_root, save_root, aim_shape=(128, 128, 112), do_filter=True, if_slim=True):
+def process_data(data_root, save_root, aim_shape=(112, 112, 80), do_filter=True, if_slim=True):
     assert os.path.isdir(data_root), f"{data_root}"
 
     pat_ids = os.listdir(data_root)
@@ -204,6 +208,8 @@ def process_data(data_root, save_root, aim_shape=(128, 128, 112), do_filter=True
         if not os.path.isdir(os.path.join(save_root, pat_id)):
             os.mkdir(os.path.join(save_root, pat_id))
         print(f'{pat_id} start!')
+        # if pat_id != "P089":
+        #     continue
         us_path = os.path.join(data_root, pat_id, f'{pat_id}_US.nii')
         mr_path = os.path.join(data_root, pat_id, f'{pat_id}_MR.nii')
         us_label_path = os.path.join(data_root, pat_id, f'{pat_id}_US_Prostate.nii')
@@ -368,14 +374,40 @@ def one_time_copy_datas_to_dirs(src_root=r'L:\DATA\temp_data\Formation__MR-USvia
             shutil.copy2(file, save_dir)
 
 
+def check_data_info(data_root=r'/home/lf/data_fong/DATA/MR-USviaFenster20'):
+    # "/home/lf/data_fong/DATA/MR-USviaFenster20"
+    # "/home/lf/data_fong/DATA/MR-USvia20"
+    pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(data_root, a)), os.listdir(data_root)))
+
+    us_paths = [
+        {
+            'volume': os.path.join(data_root, p_id, "{}_{}.nii".format(p_id, 'US')),
+            'label': os.path.join(data_root, p_id, "{}_{}.nii".format(p_id, 'US_Prostate'))
+        }
+        for p_id in pat_ids
+    ]
+
+    mr_paths = [
+        {
+            'volume': os.path.join(data_root, p_id, "{}_{}.nii".format(p_id, 'MR')),
+            'label': os.path.join(data_root, p_id, "{}_{}.nii".format(p_id, 'MR_Prostate'))
+        }
+        for p_id in pat_ids
+    ]
+    print("{:*^120s}".format('US'))
+    print_data_describe(us_paths)
+    print("{:*^120s}".format('MR'))
+    print_data_describe(mr_paths)
+
+
 def main():
     dataroot = r'/home/lf/data_fong/DATA/MR-USvia20'
-    saveroot = r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280'
+    saveroot = r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-969680'
     # dataroot = r'F:\Code\NEW_doing\UMMS\traces\datasets\MR-USviaFenster20-origin'
     # saveroot = r'F:\Code\NEW_doing\UMMS\traces\datasets\MR-USviaFenster20-pre12812896-filter'
     if not os.path.exists(saveroot):
         os.mkdir(saveroot)
-    process_data(dataroot, saveroot, aim_shape=(112, 112, 80), do_filter=True)
+    process_data(dataroot, saveroot, aim_shape=(96, 96, 80), do_filter=True)
 
 
 if __name__ == "__main__":
@@ -390,4 +422,6 @@ if __name__ == "__main__":
     # aa = nib.orientations.aff2axcodes(aff, (('L', 'R'), ('P', 'A'), ('I', 'S')))
     # print(aa)
     # one_time_copy_datas_to_dirs()
+    # check_data_info()
+
     pass

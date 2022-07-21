@@ -93,6 +93,32 @@ def one_time_repair_metrics_file(file_name):
     print(repr(datapool.get_complete_data()))
 
 
+def one_time_repair_multi_metrics_file(file_name):
+    from utils.others.utils import DataPool
+    source_test_pool = DataPool(3, 0.6)
+    target_test_pool = DataPool(3, 0.6)
+
+    data_pat = re.compile(r'^.*epoch:\s*?(\d+).*-\d{1,2}.*?sourceDC:\s*?(0\.\d+).*?targetDC:\s*?(0\.\d+).*$')
+    with open(file_name, 'r+') as f:
+        for line in f.readlines():
+            data = data_pat.match(line)
+            if data is not None:
+                epoch_str = data.groups()[0]
+                source_dc_str = data.groups()[1]
+                target_dc_str = data.groups()[2]
+                print(epoch_str, source_dc_str, target_dc_str)
+                source_test_pool.update(int(epoch_str), float(source_dc_str))
+                target_test_pool.update(int(epoch_str), float(target_dc_str))
+        f.write('\n')
+        f.write('source: '+repr(source_test_pool.get_complete_data()))
+        f.write('\n')
+        f.write('target: '+repr(target_test_pool.get_complete_data()))
+    print(repr(source_test_pool.get_complete_data()))
+    print(repr(target_test_pool.get_complete_data()))
+
+
+
+
 def main():
     logs_dir = r'/home/lf/data_fong/PROJECT/UMMS/traces/logs/mrus_patch_kfold'
     exp_name = r'mrusus128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti'
@@ -109,6 +135,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
     # testfile = r'/home/users/lf/data_lf/PROJECT/UMMS/traces/logs/mrusmr128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_adam_2e-4_poly_2x300_0.6_1080Ti/slide_test_metrics.txt'
     # one_time_repair_metrics_file(testfile)
+    tt_file = r'/home/lf/data_fong/PROJECT/UMMS/traces/logs/SingleOne/mrus11211280_fold4_bs4_SingleTarget_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_AugRugular_Tesla/test_metrics.txt'
+    one_time_repair_multi_metrics_file(tt_file)

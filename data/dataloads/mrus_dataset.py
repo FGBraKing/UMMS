@@ -2,10 +2,12 @@ import os
 import re
 import time
 import torch
+import random
 import argparse
 import numpy as np
 import pandas as pd
 import SimpleITK as sitk
+from itertools import combinations
 from configs.utils_config import get_pretty_opt
 from data.utils_data import print_data_describe
 from data.dataloads.base_dataset import BaseDataset, CustomDataset, NIIDataset
@@ -13,95 +15,7 @@ from data.transforms.transformOnArray import get_transform, get_pre_transform, g
 from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_to_list, Timer
 from utils.others.img_io import show_array_3d, show_volume_label, show_array_histogram, show_pired_histogram
 from utils.others.metrics import BinaryMetrics
-# from batchgenerators.augmentations.crop_and_pad_augmentations import pad_nd_image_and_seg, crop
-
-
-def get_data_path_old_v1(dataroot, data_phase):
-
-    mr_root = os.path.join(dataroot, 'mr'+data_phase)
-    us_root = os.path.join(dataroot, 'us'+data_phase)
-
-    us_paths = [{'volume': os.path.join(us_root, name.replace('label', 'image')), 'label': os.path.join(us_root, name)}
-                for name in os.listdir(us_root) if 'label' in name]
-
-    mr_paths = [{'volume': os.path.join(mr_root, name.replace('label', 'image')), 'label': os.path.join(mr_root, name)}
-                for name in os.listdir(mr_root) if 'label' in name]
-
-    return mr_paths, us_paths
-
-
-def get_data_path_old_v2(dataroot, data_phase, fold=1):
-    mr_root = os.path.join(dataroot, 'mr')
-    us_root = os.path.join(dataroot, 'us')
-
-    if os.path.isfile(os.path.join(dataroot, f'split_{fold}.csv')):
-        split_df = pd.read_csv(os.path.join(dataroot, f'split_{fold}.csv'), keep_default_na=True)
-    else:
-        k_fold = 5
-        split_save = False
-        randomstate = np.random.RandomState(seed=1008)
-
-        patten = re.compile(r'\d+')
-        patients = os.listdir(mr_root)
-        ids = [patten.search(x).group() for x in patients]
-
-        ids = list(set(ids))
-        ids.sort()
-        randomstate.shuffle(ids)
-        fold_number = (len(ids)+k_fold-1)//k_fold
-
-        if split_save:
-            for i in range(k_fold):
-                k_fold_dict = {
-                    'test': ids[i * fold_number:(i + 1) * fold_number],
-                    'train': ids[0:i * fold_number] + ids[(i + 1) * fold_number:]
-                }
-                print(k_fold_dict)
-                k_fold_df = pd.DataFrame.from_dict(k_fold_dict, orient='index')
-                k_fold_df.T.to_csv(os.path.join(dataroot, f'split_{i}.csv'), index=False)
-
-        else:
-            kfold_dict = dict.fromkeys(range(k_fold))
-            for i in range(k_fold):
-                kfold_dict[i] = {
-                    'test': ids[i*fold_number:(i+1)*fold_number],
-                    'train': ids[0:i*fold_number] + ids[(i+1)*fold_number:]
-                }
-            split_df = pd.DataFrame.from_dict(kfold_dict)
-            # print(tt_df.T['test'])
-            split_df.T.to_csv(os.path.join(dataroot, 'split.csv'))
-        return
-
-    test_ids = split_df['test'].dropna().tolist()
-    train_ids = split_df['train'].dropna().tolist()
-    # print("P{:0>3.0f}_{}_{}.nii".format(test_ids[2], 'MR', 'image'))
-    # print("P%03d_%s_%s.nii" % (test_ids[2], 'MR', 'image'))
-
-    used_ids = test_ids if data_phase=="test" else train_ids
-
-    us_paths = [
-        {
-            'volume': os.path.join(us_root, "P{:0>3.0f}_{}_{}.nii".format(p_id, 'US', 'image')),
-            'label': os.path.join(us_root, "P{:0>3.0f}_{}_{}.nii".format(p_id, 'US', 'label'))
-        }
-        for p_id in used_ids
-    ]
-
-    mr_paths = [
-        {
-            'volume': os.path.join(mr_root, "P{:0>3.0f}_{}_{}.nii".format(p_id, 'MR', 'image')),
-            'label': os.path.join(mr_root, "P{:0>3.0f}_{}_{}.nii".format(p_id, 'MR', 'label'))
-        }
-        for p_id in used_ids
-    ]
-    #
-    # print(us_paths[0], mr_paths[0])
-    # print(os.path.isfile(us_paths[0]['volume']),
-    #       os.path.isfile(us_paths[0]['label']),
-    #       os.path.isfile(mr_paths[0]['volume']),
-    #       os.path.isfile(mr_paths[0]['label']))
-
-    return mr_paths, us_paths
+from data.dataloads.base_dataset import AugmentationIndex
 
 
 def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
@@ -158,11 +72,6 @@ def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
         }
         for p_id in used_ids
     ]
-    # print(us_paths[0], mr_paths[0])
-    # print(os.path.isfile(us_paths[0]['volume']),
-    #       os.path.isfile(us_paths[0]['label']),
-    #       os.path.isfile(mr_paths[0]['volume']),
-    #       os.path.isfile(mr_paths[0]['label']))
     return mr_paths, us_paths
 
 
@@ -190,12 +99,16 @@ def check_data_info(dataroot):
     print_data_describe(mr_paths)
 
 
+# 先选样本，在线扩增。batch内样本不重叠
 class MrusDataset(NIIDataset):
     def __init__(self, opt):
         super(MrusDataset, self).__init__(opt)
         self.mr_paths, self.us_paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
         self.mr_size = len(self.mr_paths)
         self.us_size = len(self.us_paths)
+
+        if opt.fake_shufflt:
+            random.shuffle(self.us_paths)
 
         self.data_size = max(self.us_size, self.mr_size)
 
@@ -372,9 +285,6 @@ def main():
     opt.random_state = np.random.RandomState(seed=opt.seed)
     opt.fold = 'all'
 
-    # opt.preprocess = r'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_
-    # gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
-    #
     print(get_pretty_opt(opt))
     dataset = MrusDataset(opt)
     print(len(dataset))
@@ -396,5 +306,7 @@ def main():
 
 if __name__ == '__main__':
     # main()
-    # get_data_path(r'/home/lf/raid_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre96', 'train')
+
     check_data_info(r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280')
+
+    # r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280'

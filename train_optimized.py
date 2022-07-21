@@ -130,7 +130,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Project's useful tool to parse args")
     # rest from the training program
     # local_rank, is suitable to distrubute.launch
-    parser.add_argument('--config_name', type=str, default='mrusus_unet_train', help='the name of config')
+    parser.add_argument('--config_name', type=str, default='mrusmr_whole_train', help='the name of config')
     parser.add_argument('--second', type=int, default=5, help='wait some second and then run')
     parser.add_argument('training_script_args', nargs=REMAINDER, help='training_script_args')
     args = parser.parse_args()

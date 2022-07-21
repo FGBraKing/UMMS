@@ -349,8 +349,7 @@ class Mlp(nn.Module):
 class ConvMlp(nn.Module):
     """ MLP using 1x1 convs that keeps spatial dims
     """
-    def __init__(
-            self, in_features, hidden_features=None, out_features=None, act_layer=nn.ReLU, norm_layer=None):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.ReLU, norm_layer=None):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
@@ -404,7 +403,13 @@ def deconvlution(in_planes, out_planes, kernel_size=4, stride=2, padding=1, outp
                               groups=1, bias=use_bias, dilation=1, padding_mode='zeros')
 
 
-def upsample_deconvlution(in_planes, out_planes, kernel_size=4, stride=2, dilation=1, use_bias=False, padding_mode='zeros'):
+def upsample_deconvlution(in_planes, out_planes, kernel_size=4, stride=2, dilation=1, use_bias=False,
+                          padding_mode='zeros', use_upsample=False):
+    if use_upsample:
+        return nn.Sequential(
+            nn.Upsample(scale_factor=stride, mode='trilinear', align_corners=True),
+            nn.Conv3d(in_planes, out_planes, 1, 1, 0, bias=use_bias)
+        )
     if isinstance(kernel_size, int):
         kernel_size = (kernel_size, ) * 3
     if isinstance(dilation, int):
@@ -419,7 +424,6 @@ def upsample_deconvlution(in_planes, out_planes, kernel_size=4, stride=2, dilati
         op = max(0, int(d*k-d+2-s) // 2 * 2) - (d*k-d+1-s)
         out_padding.append(op)
         in_padding.append((d*k-d+1-s+op)//2)
-
     # print(kernel_size[0], stride[0], in_padding[0], out_padding[0], dilation[0])
     return nn.ConvTranspose3d(in_planes, out_planes, kernel_size, stride, tuple(in_padding), tuple(out_padding),
                               groups=1, bias=use_bias, dilation=dilation, padding_mode=padding_mode)

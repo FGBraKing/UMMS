@@ -120,9 +120,7 @@ class DoubleConv(nn.Sequential):
         if encoder:
             # we're in the encoder path
             conv1_in_channels = in_channels
-            conv1_out_channels = out_channels // 2
-            if conv1_out_channels < in_channels:
-                conv1_out_channels = in_channels
+            conv1_out_channels = max(in_channels, out_channels // 2)
             conv2_in_channels, conv2_out_channels = conv1_out_channels, out_channels
         else:
             # we're in the decoder path, decrease the number of channels in the 1st convolution
@@ -406,7 +404,7 @@ class TransposeConvUpsampling(AbstractUpsampling):
 
     def __init__(self, in_channels=None, out_channels=None, kernel_size=4, scale_factor=(2, 2, 2)):
         # make sure that the output size reverses the MaxPool3d from the corresponding encoder
-        upsample = nn.ConvTranspose3d(in_channels, out_channels, kernel_size=kernel_size, stride=scale_factor,padding=1)
+        upsample = nn.ConvTranspose3d(in_channels, out_channels, kernel_size=kernel_size, stride=scale_factor, padding=1)
         super().__init__(upsample)
 
 

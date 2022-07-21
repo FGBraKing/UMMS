@@ -548,12 +548,11 @@ class SoftMetrics:
         return torch.tensor(out, requires_grad=False).to(device)
 
     def get_ravd(self, result, target, **kwargs):
-        device = result.device
-        result = result.detach().cpu().numpy()
-        target = target.detach().cpu().numpy()
-        result = result > 0.5
-        target = target > 0.5
-        return torch.tensor(metric.ravd(result, target), requires_grad=False).to(device)
+
+        result = (result > 0.5).float()
+        target = (target > 0.5).float()
+
+        return (result.sum()-target.sum())/target.sum()
 
     def get_dice(self, result, target, **kwargs):
         TP, FN, TN, FP = self.get_basic_metrics(result, target)
@@ -593,6 +592,9 @@ class SoftMetrics:
     def get_precision(self, result, target, **kwargs):
         TP, FN, TN, FP = self.get_basic_metrics(result, target)
         return (TP + self.smooth) / (TP + FP + self.smooth + self.eps)
+
+    def get_roisize(self, result, target, **kwargs):
+        return target.sum().item() / target.numel()
 
     def __call__(self, result, target, *args, **kwargs):
         metrices = []

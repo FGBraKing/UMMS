@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.cuda.amp
 
 from types import SimpleNamespace
-from models.modules.segmentation_model.unet_custom import UnetCustom
+from models.modules.MultimodalSegmentation import SingleUnet
 from models.networks.base_model import BaseModel
 from models.loss import losses, get_loss_criterion
 from models.optim import create_optimizer, create_optimizer_v2
@@ -26,8 +26,14 @@ ddp_logger = logging.getLogger('ddp_logger')
 def define_model(opt, device):
     assert not(opt.DDP and opt.DP)
 
-    net = UnetCustom(norm_type='batch', in_channels=opt.input_nc, n_class=opt.output_nc,
-                     init_channel_number=opt.init_channel_number, deptp=4, final_sigmoid=False)
+    net = SingleUnet(opt.input_nc, opt.output_nc,
+                     f_maps=opt.init_channel_number,
+                     num_levels=5,
+                     with_activation=False,
+                     final_sigmoid=True,
+                     interpolation=True,
+                     norm_type="batch",
+                     act_type="lrelu").to(device)
 
     init_func = get_init_func(init_type=opt.init_type, init_gain=opt.init_gain)
     net.apply(init_func)
@@ -59,9 +65,9 @@ def define_model(opt, device):
     return net
 
 
-class UnetModel(BaseModel):
+class SingleModel(BaseModel):
     def __init__(self, opt):
-        super(UnetModel, self).__init__(opt)
+        super(SingleModel, self).__init__(opt)
 
         self.model_names = ['segment']
         self.net_segment = define_model(opt, self.device)
@@ -69,29 +75,6 @@ class UnetModel(BaseModel):
 
         self.loss_names = ['regular', 'combo', 'total']
         if self.isTrain:
-            # other_loss_kwargs = {}
-            # # (sample_weight)   (gamma_neg gamma_pos clip)  (num_splits)  (activate)  (bce_smooth)
-            # self.criterion = get_loss_criterion(name=opt.loss_name,
-            #                                     ignore_index=opt.ignore_index, reduction=opt.reduction,
-            #                                     eps=opt.loss_eps, smooth=opt.loss_smooth,
-            #                                     alpha=opt.loss_alpha, beta=opt.loss_beta,
-            #                                     gamma=opt.loss_gamma, weight=opt.loss_weight,
-            #                                     **other_loss_kwargs).to(self.device)
-            # self.criterionDice = get_loss_criterion(name='bdc',
-            #                                         ignore_index=opt.ignore_index,
-            #                                         reduction=opt.reduction,
-            #                                         use_sigmoid=True,
-            #                                         eps=opt.loss_eps,
-            #                                         smooth=1.0,
-            #                                         **other_loss_kwargs).to(self.device)
-            # self.criterionBCE = get_loss_criterion(name='bce',
-            #                                        ignore_index=opt.ignore_index,
-            #                                        reduction=opt.reduction,
-            #                                        weight=1,
-            #                                        smooth=0.01,
-            #                                        eps=opt.loss_eps,
-            #                                        )
-            # self.criterionL2 = getattr(losses, 'l2_regularization')
             self.criterionCombo = get_loss_criterion(name='custom')
             self.criterionRegular = get_loss_criterion(name='custom_regular')
 
@@ -110,9 +93,8 @@ class UnetModel(BaseModel):
             self.optimizers.append(self.optimizer)
             self.schedulers = [create_scheduler(opt, optimizer)[0] for optimizer in self.optimizers]
 
-        # specify the images you want to save/display.
         self.visual_names = ['predict', 'label', 'volume']
-        self.metric_names = ['DC', 'recall', 'precision', 'specificity', 'accuracy']
+        self.metric_names = ['DC', 'ravd', 'recall', 'precision', 'specificity', 'accuracy']
         # 'hd' 'hd95' 'assd' 'asd'  'ravd'
 
         self.get_metrics = BinaryMetrics()
@@ -156,7 +138,7 @@ class UnetModel(BaseModel):
             # self.loss_bce = self.criterionBCE(self.predict, self.label)
             self.loss_item_dict, self.loss_combo = self.criterionCombo(self.predict, self.label)
             self.loss_regular = self.criterionRegular(self.net_segment.parameters())
-            self.loss_total = self.loss_combo + 2e-4*self.loss_regular
+            self.loss_total = self.loss_combo + 1e-4*self.loss_regular
         self.loss_total = self.loss_total / self.opt.gradient_accumulation_k_step
 
         if self.opt.use_mixed_precision:
@@ -214,7 +196,7 @@ class UnetModel(BaseModel):
             'stride': (16, 16, 8),      # 3*3*3
             'no_augment': True,
             'visual_names': ('segment', 'label', 'origin_volume'),
-            'metric_names': ('DC', 'recall', 'precision', 'specificity', 'accuracy')
+            'metric_names': ('DC', 'ravd', 'recall', 'precision', 'specificity', 'accuracy')
         }
         self.metric_dict, visuals = test_during_train(one_patient, self.net_segment,
                                                       SimpleNamespace(**kwargs), self.device)
@@ -234,7 +216,7 @@ class UnetModel(BaseModel):
 def main():
     from configs.options.dataset_network import ProjectOptions
     opt = ProjectOptions().parse(True)   # get training options
-    model = UnetModel(opt)
+    model = SingleModel(opt)
     opt.continue_train = True
     model.setup(opt)
 

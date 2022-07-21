@@ -2,8 +2,8 @@ import torch
 import numpy as np
 import torch.utils.data as data
 from abc import ABC, abstractmethod
-from ..utils_data import get_pad_image, get_flip_volumes
-from data.utils_data import nii_loader, h5_loader
+from data.utils_data import nii_loader, h5_loader, get_pad_image, get_flip_volumes
+from itertools import combinations
 
 
 class BaseDataset(data.Dataset, ABC):
@@ -212,3 +212,36 @@ class TestOnePatientDataset(data.Dataset):
 
     def get_axis(self):
         return self.axis
+
+
+class AugmentationIndex(object):
+    def __init__(self, mirror_axes, rot_axes, shuffle=False, replacement=False, seed=None):
+        self.mirror_num = 2 ** len(mirror_axes)
+        self.rot_num = len(self.get_rot_axis(rot_axes))*4
+        self.data_num = self.mirror_num * self.rot_num
+        self.shuffle = shuffle
+        self.replacement = replacement
+        self.random_state = np.random.RandomState(seed=seed)
+
+    def __iter__(self):
+        if self.shuffle:
+            if self.replacement:
+                yield from self.random_state.randint(self.data_num, size=(32,), dtype=np.int)
+            else:
+                yield from self.random_state.choice(self.data_num, size=self.data_num, replace=False)
+        else:
+            yield from iter(range(self.data_num))
+
+    def __len__(self):
+        return self.data_num
+
+    def parse_index(self, index):
+        mirror_index = index // self.rot_num
+        rot_axis_index = (index % self.rot_num) // 4
+        rot_angle_index = ((index % self.rot_num) % 4) // 1
+        return mirror_index, rot_axis_index, rot_angle_index
+
+    @staticmethod
+    def get_rot_axis(axes):
+        return tuple(combinations(axes, 2))
+

@@ -38,7 +38,7 @@ def find_dataset_using_name(dataset_name):
     return dataset
 
 
-def create_dataset(opt):
+def create_dataset(opt, proxy_two=False):
     """Create a dataset given the option.
 
     This function wraps the class CustomDatasetDataLoader.
@@ -48,13 +48,17 @@ def create_dataset(opt):
         >>> from data import create_dataset
         >>> dataset = create_dataset(opt)
     """
-    data_loader = CustomDatasetDataLoader(opt)
+    if proxy_two:
+        data_loader = ProxyDataloader(opt)
+    else:
+        data_loader = CustomDatasetDataLoader(opt)
     dataset = data_loader.load_data()
     return dataset
 
 
 def create_test_dataset(opt):
     test_arg_dict = defaultdict()
+    test_arg_dict['fake_shufflt'] = False
     test_arg_dict['custom'] = True
     test_arg_dict['serial_batches'] = True
     test_arg_dict['dataroot'] = opt.dataroot
@@ -195,6 +199,113 @@ class CustomDatasetDataLoader:
     def __iter__(self):
         """Return a batch of data"""
         for i, data in enumerate(self.dataloader):
+            if i * self.opt.batch_size >= self.opt.max_dataset_size:
+                ddp_logger.warning('max_dataset_size:{}'.format(self.opt.max_dataset_size))
+                break
+            yield data
+
+
+class ProxyDataloader(object):
+    def __init__(self, opt):
+        dataset_args = {
+            "random_state": opt.random_state,
+            "batch_size": opt.batch_size,
+            "max_dataset_size": opt.max_dataset_size,
+            "dataroot": opt.dataroot,
+            "phase": opt.phase,
+            "seed": opt.seed,
+            "fold": opt.fold,
+            "serial_batches": opt.serial_batches,
+            "custom": opt.custom,
+            "preprocess": opt.preprocess,
+            "order_data": opt.order_data,
+            "order_seg": opt.order_seg,
+            "elastic_alpha": opt.elastic_alpha,
+            "elastic_sigma": opt.elastic_sigma,
+            "scale_range": opt.scale_range,
+            "rot_axes": opt.rot_axes,
+            "rot_angle_spectrum": opt.rot_angle_spectrum,
+            "mirror_axes": opt.mirror_axes,
+            "crop_size": opt.crop_size,
+            "crop_stride": opt.crop_stride,
+            "g_noise_variance": opt.g_noise_variance,
+            "bright_multiplier_range": opt.bright_multiplier_range,
+            "contrast_range": opt.contrast_range,
+            "simulate_zoom_range": opt.simulate_zoom_range,
+            "gamma_range": opt.gamma_range,
+    }
+
+        self.opt = SimpleNamespace(**dataset_args)
+        mr_dataset_class = find_dataset_using_name("mrusmrplus")
+        self.mr_dataset = mr_dataset_class(self.opt)
+        ddp_logger.warning("dataset [%s] was created" % type(self.mr_dataset).__name__)
+        us_dataset_class = find_dataset_using_name("mrususplus")
+        self.us_dataset = us_dataset_class(self.opt)
+        ddp_logger.warning("dataset [%s] was created" % type(self.us_dataset).__name__)
+        mr_sampler = torch.utils.data.distributed.DistributedSampler(self.mr_dataset,
+                                                                     num_replicas=opt.world_size,
+                                                                     rank=opt.rank,
+                                                                     shuffle=opt.data_shuffle,
+                                                                     seed=0,
+                                                                     drop_last=opt.drop_last) if opt.use_distribute_sample else None
+        us_sampler = torch.utils.data.distributed.DistributedSampler(self.us_dataset,
+                                                                     num_replicas=opt.world_size,
+                                                                     rank=opt.rank,
+                                                                     shuffle=opt.data_shuffle,
+                                                                     seed=0,
+                                                                     drop_last=opt.drop_last) if opt.use_distribute_sample else None
+
+        self.mr_sampler = mr_sampler
+        self.us_sampler = us_sampler
+        self.mr_dataloader = torch.utils.data.DataLoader(
+            self.mr_dataset,
+            batch_size=opt.batch_size,
+            shuffle=(self.mr_sampler is None) and opt.data_shuffle,
+            sampler=self.mr_sampler,  #
+            batch_sampler=None,  #
+            num_workers=int(opt.num_threads),
+            collate_fn=None,  #
+            pin_memory=True,
+            drop_last=opt.drop_last,  #
+            prefetch_factor=2  #
+        )
+        self.us_dataloader = torch.utils.data.DataLoader(
+            self.us_dataset,
+            batch_size=opt.batch_size,
+            shuffle=(self.us_sampler is None) and opt.data_shuffle,
+            sampler=self.us_sampler,  #
+            batch_sampler=None,  #
+            num_workers=int(opt.num_threads),
+            collate_fn=None,  #
+            pin_memory=True,
+            drop_last=opt.drop_last,  #
+            prefetch_factor=2  #
+        )
+
+    def load_data(self):
+        return self
+
+    def set_epoch(self, epoch):
+        if self.mr_sampler:
+            self.mr_sampler.set_epoch(epoch)
+        if self.us_sampler:
+            self.us_sampler.set_epoch(epoch+4)
+
+    def get_loader_size(self):
+        return min(len(self.mr_dataloader), len(self.us_dataloader))
+
+    def __len__(self):
+        """Return the number of data in the dataset"""
+        return min(len(self.mr_dataset), len(self.us_dataset), self.opt.max_dataset_size)
+
+    def __iter__(self):
+        data = defaultdict()
+        i = 0
+        for mr_data, us_data in zip(self.mr_dataloader, self.us_dataloader):
+            for key, value in mr_data.items():
+                data["mr_" + key] = value
+            for key, value in us_data.items():
+                data["us_" + key] = value
             if i * self.opt.batch_size >= self.opt.max_dataset_size:
                 ddp_logger.warning('max_dataset_size:{}'.format(self.opt.max_dataset_size))
                 break

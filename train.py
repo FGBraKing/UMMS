@@ -18,7 +18,7 @@ from utils.others.img_io import show_array_3d, show_volume_label, show_volume_la
 
 # matplotlib.use('TKAgg')
 
-save_threshold = 0.9
+save_threshold = 0.80
 pool_size = 3
 
 
@@ -44,7 +44,8 @@ def train():
     # opt = ProjectOptions().parse(True)   # get training options
     # opt = get_opt(args=None)
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml', '--use_config'])
-    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_whole_train.yaml', '--use_config', '--use_current_local_rank'])
+    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_unet_train.yaml', '--use_config',
+                        '--use_current_local_rank'])
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml','--use_config', '--use_current_local_rank'])
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
@@ -63,11 +64,10 @@ def do_train(opt):
     # ====================================================配置gpu等全局变量==============================================
     opt.random_state = np.random.RandomState(seed=opt.seed)
 
-    # print(torch.cuda.is_available())
     # setup default cuda device, 配合tensor.cuda()使用
     opt = set_local_gpu(opt)
     print('local_gpu:{}'.format(opt.local_gpu))
-    # print('cuda is_available:', torch.distributed.is_available())
+    # print('cuda is_available:', torch.cuda.is_available(), torch.distributed.is_available())
 
     if opt.DDP and torch.distributed.is_available():
         torch.distributed.init_process_group(backend=opt.dist_backend,

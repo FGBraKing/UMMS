@@ -255,7 +255,7 @@ def load_weithts(net, weight_path, device=torch.device('cpu'), name='segment'):
     else:
         net_state_dict = state_dict
 
-    net.load_state_dict(net_state_dict)
+    net.load_state_dict(net_state_dict, strict=True)
     return net
 
 

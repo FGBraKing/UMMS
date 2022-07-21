@@ -21,8 +21,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
     if not isinstance(fold, int):
         return [
             {
-                'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
-                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+                'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
+                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
             }
             for p_id in pat_ids
         ]
@@ -65,15 +65,15 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
 
     data_paths = [
         {
-            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+            'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
         }
         for p_id in used_ids
     ]
     return data_paths
 
 
-class MrusmrPlusDataset(NIIDataset):
+class MrususPlusDataset(NIIDataset):
     axis_database = (
         (0,),
         ((0,), (1,), (1, 2)),
@@ -81,12 +81,11 @@ class MrusmrPlusDataset(NIIDataset):
     )
 
     def __init__(self, opt):
-        super(MrusmrPlusDataset, self).__init__(opt)
+        super(MrususPlusDataset, self).__init__(opt)
         self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
 
         self.mirror_axes = self.get_mirror_axis(opt.mirror_axes)
         self.mirror_num = len(self.mirror_axes) + 1                 # self.mirror_num = 8
-        # self.mirror_num = 2**len(opt.mirror_axes)
         self.rotate_axes = self.get_rot_axis(opt.rot_axes)
         self.rotate_num = len(self.rotate_axes) * 4                 # self.rotate_num = 4
 
@@ -171,9 +170,9 @@ class MrusmrPlusDataset(NIIDataset):
                 'spacing': spacing}
 
 
-class TestMrusmrPlusDataset(BaseDataset):
+class TestMrususPlusDataset(BaseDataset):
     def __init__(self, opt, loader=nii_loader):
-        super(TestMrusmrPlusDataset, self).__init__(opt)
+        super(TestMrususPlusDataset, self).__init__(opt)
         self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
         self.data_size = len(self.paths)
         self.loader = loader
@@ -191,9 +190,9 @@ class TestMrusmrPlusDataset(BaseDataset):
         return self.data_size
 
 
-class PredictMrusmrPlusDataset(BaseDataset):
+class PredictMrususPlusDataset(BaseDataset):
     def __init__(self, opt, loader=nii_loader):
-        super(PredictMrusmrPlusDataset, self).__init__(opt)
+        super(PredictMrususPlusDataset, self).__init__(opt)
 
         self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)  # should be [{'volume':volume,'label':label},...]
         self.data_size = len(self.paths)
@@ -246,18 +245,18 @@ def main():
         "phase": "train",
         "seed": 1008,
         "fold": 2,
-        "serial_batches": True,
-        "custom": True,
         "preprocess": r'elastic_randomscale_randomcropwithstride_randomrotate_centercrop_gaussianNoise_GaussianBlur_'
                       r'BrightnessMultiplicative_contrast_simulate_gammatransform',
+        "serial_batches": True,
+        "custom": True,
+        "mirror_axes": [0,1,2],
+        "rot_axes": [2, 1],
+        "rot_angle_spectrum": 30,
         "order_data": 3,
         "order_seg": 1,
         "elastic_alpha": [0., 70],
         "elastic_sigma": [8., 12.],
         "scale_range": [0.7, 1.3],
-        "rot_axes": [2, 1],
-        "rot_angle_spectrum": 30,
-        "mirror_axes": [0, 1, 2],
         "crop_size": [80, 80, 64],
         "crop_stride": 2,
         "g_noise_variance": [0.0, 0.1],
@@ -270,7 +269,7 @@ def main():
     opt = SimpleNamespace(**kwargs)
     opt.random_state = np.random.RandomState(seed=opt.seed)
     print(get_pretty_opt(opt))
-    dataset = MrusmrPlusDataset(opt)
+    dataset = MrususPlusDataset(opt)
     print(len(dataset))
     with Timer('running with custom_debug, using time:%ss'):
         # dataset.custom_debug()

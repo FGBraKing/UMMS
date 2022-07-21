@@ -12,21 +12,6 @@ from data.dataloads.base_dataset import BaseDataset, CustomDataset, NIIDataset
 from data.transforms.transformOnArray import get_transform, get_pre_transform, get_post_transform, ToTensor
 from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_to_list, Timer
 from utils.others.img_io import show_array_3d, show_volume_label, show_array_histogram, show_pired_histogram
-# from batchgenerators.augmentations.crop_and_pad_augmentations import pad_nd_image_and_seg, crop
-
-
-def get_data_path_old(dataroot, data_phase):
-
-    mr_root = os.path.join(dataroot, 'mr'+data_phase)
-    us_root = os.path.join(dataroot, 'us'+data_phase)
-
-    us_paths = [{'volume': os.path.join(us_root, name.replace('label', 'image')), 'label': os.path.join(us_root, name)}
-                for name in os.listdir(us_root) if 'label' in name]
-
-    mr_paths = [{'volume': os.path.join(mr_root, name.replace('label', 'image')), 'label': os.path.join(mr_root, name)}
-                for name in os.listdir(mr_root) if 'label' in name]
-
-    return mr_paths, us_paths
 
 
 def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
@@ -204,13 +189,8 @@ def main():
 
     parser.add_argument('--crop_size', type=list, default=[160, 160, 16])
     opt = parser.parse_args(args=['--serial_batches', '--custom'])
-    # opt.preprocess = r'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_gaussianNoise_' \
-    #                  r'GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
     opt.random_state = np.random.RandomState(seed=opt.seed)
 
-    # opt.preprocess = r'elastic_randomscale_randomcrop_ranomrotate_centercrop_rot90_mirror_
-    # gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
-    #
     print(get_pretty_opt(opt))
     dataset = MrusDiffDataset(opt)
     print(len(dataset))

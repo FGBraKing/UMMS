@@ -390,7 +390,8 @@ def print_data_describe(data_list, *args, **kwargs):
         scan_size = tuple(map(lambda x, y: round(x * y / 10, 2), label_shape, label_spacing))
         area_rate = label.sum()/label.size
 
-        print('scan_size:{}cm \t roi_size:{}cm\t rate: {:6.4%}'.format(scan_size, roi_size, area_rate))
+        print('scan_size:{}cm \t roi_size:{}cm\t rate: {:6.4%}\t roi_range:{}'.format(scan_size, roi_size,
+                                                                                      area_rate, roi_range))
         area_rate_set.add(area_rate)
 
         roi_size_set.add(roi_size)
@@ -409,18 +410,18 @@ def print_data_describe(data_list, *args, **kwargs):
         physical_x_set.add(scan_size[0])
         physical_z_set.add(scan_size[-1])
 
-    print('roi_size: ')
-    for lb_size in roi_size_set:
-        print(f'{lb_size}cm')
-    print('roi_shape: ')
-    for lb_shape in roi_shape_set:
-        print(f'{lb_shape} pixel')
-    print('roi_range: ')
-    for lb_range in roi_range_set:
-        print(lb_range)
-    print('roi area rate:')
-    for area_rate in area_rate_set:
-        print('{:>6.4%}'.format(area_rate))
+    # print('roi_size: ')
+    # for lb_size in roi_size_set:
+    #     print(f'{lb_size}cm')
+    # print('roi_shape: ')
+    # for lb_shape in roi_shape_set:
+    #     print(f'{lb_shape} pixel')
+    # print('roi_range: ')
+    # for lb_range in roi_range_set:
+    #     print(lb_range)
+    # print('roi area rate:')
+    # for area_rate in area_rate_set:
+    #     print('{:>6.4%}'.format(area_rate))
 
     print('shape_set::', shape_set)
     print('shape_x_set:', shape_x_set)

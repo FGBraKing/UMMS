@@ -18,7 +18,7 @@ from utils.others.img_io import show_array_3d, show_volume_label, show_volume_la
 # matplotlib.use('TKAgg')
 
 
-save_threshold = 0.99
+save_threshold = 0.70
 pool_size = 3
 
 
@@ -39,7 +39,7 @@ def set_local_gpu(args):
 
 
 def train():
-    opt = get_opt(args=['--config_path=configs/defaults/ummkd_train.yaml', '--use_config', '--use_current_local_rank'])
+    opt = get_opt(args=['--config_path=configs/defaults/dualstream_train.yaml', '--use_config', '--use_current_local_rank'])
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
     assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
@@ -99,7 +99,7 @@ def do_train(opt):
 
     # ========================================数据,模型,初始化、优化器、学习率策略========================================
 
-    dataloader = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
+    dataloader = create_dataset(opt, opt.proxy_two)  # create a dataset given opt.dataset_mode and other options
     dataset_size = len(dataloader)    # get the number of images in the dataset.
     dataloader_size = dataloader.get_loader_size()
     ddp_logger.warning('The number of training images = %d' % dataset_size)

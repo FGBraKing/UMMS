@@ -325,7 +325,19 @@ class TrusPre(DatasetPreOne):
         save_json(json_dict, os.path.join(save_root, "dataset.json"))
 
 
-if __name__ == "__main__":
+def check_data_info(dataroot=r'/home/lf/data_fong/DATA/prostate_daf3d'):
+    from data.utils_data import print_data_describe
+    img_root = os.path.join(dataroot, 'image')
+    label_root = os.path.join(dataroot, 'label')
+    pat_num = re.compile(r'P(\d+)\_')
+    patient_numlist = [pat_num.findall(name)[0] for name in os.listdir(img_root)]
+    case_list = [{'volume': os.path.join(img_root, 'P' + name + r'_image.nii'),
+                  'label': os.path.join(label_root, 'P' + name + r'_label.nii')}
+                 for name in patient_numlist]
+    print_data_describe(case_list)
+
+
+def main():
     dataroot = '/home/lf/data_fong/DATA/prostate_daf3d'
     # saveroot = '/raid/lf/PROJECT/DLForPytorch/traces/datasets/prostate_daf3d_pre'
     # nnunet_save_root = r'/home/lf/raid_lf/nnUNet_materials/nnUNet_raw/nnUNet_raw_data/Task603_ProstateDaf'
@@ -355,6 +367,10 @@ if __name__ == "__main__":
 
     print("end")
 
+
+if __name__ == "__main__":
+    # main()
+    check_data_info()
 
 # sitk.ReadImage(img_path)
 # <class 'SimpleITK.SimpleITK.Image'>
