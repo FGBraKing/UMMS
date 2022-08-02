@@ -64,6 +64,10 @@ class BinaryMetrics:
         assert predict.shape == target.shape, "Shape mismatch: {} and {}".format(predict.shape, target.shape)  # N *
         return int(np.prod(target.shape, dtype=np.int64))
 
+    @staticmethod
+    def get_roisize(predict, target, **kwargs):
+        return target.sum() / target.size
+
     def get_existence(self, predict, target, **kwargs):
         predict = predict > self.threshold
         target = target.astype(np.bool)

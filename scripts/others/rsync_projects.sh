@@ -19,16 +19,17 @@ server1=(
   ["home"]="/home/lf"
   ["working_dir"]="/home/lf/wind_lf"
 )
-server2=(
-  ["ip"]="172.21.16.17"
-  ["home"]="/home/lf"
-  ["working_dir"]="/home/lf/raid_lf"
-)
 
-server3=(
+server2=(
   ["ip"]="172.21.16.190"
   ["home"]="/home/lf"
   ["working_dir"]="/home/lf/data_lf"
+)
+
+server3=(
+  ["ip"]="172.21.16.17"
+  ["home"]="/home/lf"
+  ["working_dir"]="/home/lf/raid_lf"
 )
 
 server_broke0=(

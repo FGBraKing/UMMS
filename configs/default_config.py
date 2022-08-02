@@ -67,6 +67,7 @@ _C.init_std = 0.02
 # ---------------------------------------------------------------------------- #
 # 优化参数：包括优化器、学习率和损失函数等
 # ---------------------------------------------------------------------------- #
+_C.optimize_respective = False
 # loss
 _C.loss_name = 'combo'
 _C.loss_alpha = None
@@ -78,6 +79,8 @@ _C.loss_smooth = None
 _C.loss_opt = None
 _C.reduction = None
 _C.ignore_index = None
+_C.prior_gamma = None
+_C.prior_threshold = None
 # optimizer
 _C.optimizer_name = None
 _C.lr = None
@@ -146,6 +149,7 @@ _C.single = True   # 是否多模态训练
 _C.DEBUG = None
 _C.deterministic = None
 # additional
+_C.prefix = None
 _C.suffix = None
 _C.verbose = None
 # files path

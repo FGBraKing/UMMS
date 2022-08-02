@@ -44,7 +44,7 @@ def print_model_parm_nums(net):  # count and print total number of parameters
     print('  + Total Memory(SGD x3;Adam x4) of params(float32 x4): %.4fM' % (3 * 4 * total / 1e6))  # 每一百万为一个单位
 
 
-def print_model_parm_flops(net, input, need_idx=True):  # 得到模型计算量
+def print_model_parm_flops(net, input, need_idx=True, **kwargs):  # 得到模型计算量
     prods = {}
     if len(input.size()) == 5:
         print('batch_size, output_channels, output_depth, output_height, output_width, params, feature pixel')
@@ -220,7 +220,7 @@ def print_model_parm_flops(net, input, need_idx=True):  # 得到模型计算量
     if need_idx is True:
         out = net(input, 0)
     else:
-        out = net(input)
+        out = net(input, **kwargs)
 
     num_conv = sum(list_conv)
     num_conv3d = sum(list_conv3d)

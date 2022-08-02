@@ -17,6 +17,7 @@ from utils.others.distributed_utils import record_distribute_ddp, torch_distribu
 from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict, show_image, show_paired_image
 # matplotlib.use('TKAgg')
 
+from configs.excess_config import ex_config
 
 save_threshold = 0.70
 pool_size = 3
@@ -39,7 +40,7 @@ def set_local_gpu(args):
 
 
 def train():
-    opt = get_opt(args=['--config_path=configs/defaults/dualstream_train.yaml', '--use_config', '--use_current_local_rank'])
+    opt = get_opt(args=['--config_path=configs/defaults/dualstreamtranswithprior_train.yaml', '--use_config', '--use_current_local_rank'])
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
     assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
@@ -144,8 +145,10 @@ def do_train(opt):
     total_iters = 0                # the total number of training iterations
     source_test_pool = DataPool(pool_size, save_threshold)
     target_test_pool = DataPool(pool_size, save_threshold)
+    synthetic_test_pool = DataPool(pool_size, save_threshold)
 
     for epoch in range(opt.epoch_start, opt.num_epochs + 1):
+        ex_config.current_epoch = epoch
         if epoch == 1 and opt.continue_train is False and opt.DDP is True:
             ddp_logger.info('saving networks and than load!')
             # 保证每个进程的网络初始权重相同
@@ -347,11 +350,13 @@ def do_train(opt):
 
                 save_for_source = source_test_pool.update(epoch, now_test_metrics['sourceDC'])
                 save_for_target = target_test_pool.update(epoch, now_test_metrics['targetDC'])
+                save_for_synthetic = synthetic_test_pool.update(epoch, (now_test_metrics['sourceDC'] +
+                                                                        now_test_metrics['targetDC'])/2)
 
                 if on_master:
                     visualizer.print_current_test_metrics(now_test_metrics, epoch, -1)
                     visualizer.plot_current_losses(0, 0, now_test_metrics, epoch, tag='test metrics over epoch')
-                    if save_for_target or save_for_source:
+                    if save_for_target or save_for_source or save_for_synthetic:
                         ddp_logger.warning('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
                         save_networks('latest')
                         save_networks(epoch)
@@ -380,10 +385,13 @@ def do_train(opt):
     ddp_logger.info('end training!')
     best_source_epoch, best_source_dice = source_test_pool.get_best_data()
     best_target_epoch, best_target_dice = target_test_pool.get_best_data()
+    best_synthetic_epoch, best_synthetic_dice = synthetic_test_pool.get_best_data()
     opt_logger.info(f'best_source_epoch: {best_source_epoch}\n'
                     f'best_source_dice: {best_source_dice}\n'
                     f'best_target_epoch: {best_target_epoch}\n'
                     f'best_target_dice: {best_target_dice}\n'
+                    f'best_synthetic_epoch: {best_synthetic_epoch}\n'
+                    f'best_synthetic_dice: {best_synthetic_dice}\n'
                     )
 
     if visualizer:
@@ -391,6 +399,8 @@ def do_train(opt):
         visualizer.record_test_metrics_message(source_test_pool.get_complete_data())
         visualizer.record_test_metrics_message('target:')
         visualizer.record_test_metrics_message(target_test_pool.get_complete_data())
+        visualizer.record_test_metrics_message('synthetic:')
+        visualizer.record_test_metrics_message(synthetic_test_pool.get_complete_data())
         visualizer.close()
     ddp_logger.info('visualizer closed!')
 
@@ -425,6 +435,9 @@ if __name__ == '__main__':
     print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
     train()
     print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+    print(torch.cuda.memory_allocated())
+    print(torch.cuda.memory_reserved())
+    print(torch.cuda.max_memory_allocated())
 
 
 

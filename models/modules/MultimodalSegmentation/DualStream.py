@@ -99,7 +99,7 @@ class ConvBlock(nn.Module):
 
 
 class DoubleConv(nn.Module):
-    def __init__(self, in_channels, out_channels, in_encoder, kernel_size=3, norm_type="batch", act_type="lrelu"):
+    def __init__(self, in_channels, out_channels, in_encoder, kernel_size=3, norm_type="batch", act_type="lrelu", **kwargs):
         super(DoubleConv, self).__init__()
         if in_encoder:
             conv1_in_channels = in_channels

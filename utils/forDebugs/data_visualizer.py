@@ -44,7 +44,7 @@ def show_density(data):
 def check_all_data_density(dataroot):
     pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
 
-    all_patients = np.zeros((2, 20, 96, 128, 128), dtype=np.float)
+    all_patients = np.zeros((2, 20, 80, 112, 112), dtype=np.float)
     for i, p_id in enumerate(pat_ids):
         us_path = os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume'))
         mr_path = os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume'))
@@ -66,7 +66,7 @@ def check_all_data_density(dataroot):
 
 
 def check_all_data_percentile(dataroot, percentile=20):
-    all_patients = np.zeros((20, 96, 128, 128), dtype=np.float)
+    all_patients = np.zeros((20, 80, 112, 112), dtype=np.float)
     pat_ids = list(filter(lambda a: os.path.isdir(os.path.join(dataroot, a)), os.listdir(dataroot)))
     for i, p_id in enumerate(pat_ids):
         us_path = os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume'))
@@ -85,7 +85,8 @@ def check_all_data_percentile(dataroot, percentile=20):
 if __name__ == "__main__":
     #
     # r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre12812896'
-    data_root=r'/home/users/lf/data_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre12812896-filter'
+    # data_root=r'/home/users/lf/data_lf/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre12812896-filter'
+    data_root = r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280'
     # data_root=r'F:\Code\NEW_doing\UMMS\traces\datasets\MR-USviaFenster20-pre12812896-filter'
 
     check_all_data_density(data_root)

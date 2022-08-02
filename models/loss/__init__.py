@@ -18,7 +18,7 @@ from .custom_loss import *
 
 SUPPORTED_LOSSES = ['bdc', 'dc', 'bce', 'ce', 'wce', 'pce', 'asymmetric', 'b_focal', 'focal', 'jsd', 'l1', 'l2', 'mse',
                     'lovasz', 'BinaryTversky', 'MultiTversky', 'tversky', 'combo', 'others',
-                    'custom', 'custom_regular', 'custom_multimodal']
+                    'custom', 'custom_regular', 'custom_multimodal', 'prior', 'prior_asymmetric']
 
 
 # --------------------------------------------------------CUSTOM------------------------------------------------
@@ -34,30 +34,12 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
     # eps smooth alpha beta gamma weight
     # (sample_weight)   (gamma_neg gamma_pos clip)  (num_splits)  (activate)  (bce_smooth)
     assert name in SUPPORTED_LOSSES, f'Invalid loss: {name}'
-    if 'eps' in kwargs.keys():
-        eps = kwargs['eps']
-    else:
-        eps = 1e-7
-    if 'smooth' in kwargs.keys():
-        smooth = kwargs['smooth']
-    else:
-        smooth = 1.0
-    if 'alpha' in kwargs.keys():
-        alpha = kwargs['alpha']
-    else:
-        alpha = 1.0
-    if 'beta' in kwargs.keys():
-        beta = kwargs['beta']
-    else:
-        beta = 2
-    if 'gamma' in kwargs.keys():
-        gamma = kwargs['gamma']
-    else:
-        gamma = 2
-    if 'weight' in kwargs.keys():
-        weight = kwargs['weight']
-    else:
-        weight = torch.tensor(1.0)
+    eps = kwargs.get('eps', 1e-7)
+    smooth = kwargs.get('smooth', 1.0)
+    alpha = kwargs.get('alpha', 1.0)
+    beta = kwargs.get('beta', 2)
+    gamma = kwargs.get('gamma', 2)
+    weight = kwargs.get('weight', torch.tensor(1.0))
 
     if name == 'bce':
         if ignore_index is None:
@@ -86,18 +68,9 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
     elif name == 'l2' or name == 'mse':
         return nn.MSELoss(reduction=reduction)
     elif name == 'asymmetric':
-        if 'gamma_neg' in kwargs.keys():
-            gamma_neg = kwargs['gamma_neg']
-        else:
-            gamma_neg = 4
-        if 'gamma_pos' in kwargs.keys():
-            gamma_pos = kwargs['gamma_pos']
-        else:
-            gamma_pos = 1
-        if 'clip' in kwargs.keys():
-            clip = kwargs['clip']
-        else:
-            clip = 0.05
+        gamma_neg = kwargs.get('gamma_neg', 4)
+        gamma_pos = kwargs.get('gamma_pos', 1)
+        clip = kwargs.get('clip', 0.05)
         return AsymmetricLossMultiLabel(gamma_neg=gamma_neg, gamma_pos=gamma_pos, clip=clip,
                                         reduction=reduction, eps=eps)
     elif name == 'focal':
@@ -121,10 +94,7 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
     elif name == 'lovasz':
         return LovaszSoftmax(reduction=reduction)
     elif name == 'tversky':
-        if 'activate' in kwargs.keys():
-            activate = kwargs['activate']
-        else:
-            activate = 'sigmoid'
+        activate = kwargs.get('activate', 'sigmoid')
         return MultiTverskyLoss(alpha=alpha, beta=beta, ignore_index=ignore_index, reduction=reduction,
                                 smooth=smooth, normalization=activate)
     elif name == 'BinaryTversky':
@@ -134,32 +104,28 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
         return MultiTverskyLoss(alpha=alpha, beta=beta, weights=weight,
                                 reduction=reduction, is_logit=True, ignore_index=ignore_index)
     elif name == 'combo':
-        if 'bce_smooth' in kwargs.keys():
-            bce_smooth = kwargs['bce_smooth']
-        else:
-            bce_smooth = 0.01
+        bce_smooth = kwargs.get('bce_smooth', 0.01)
         return WBCE_DiceLoss(alpha=alpha, weight=weight, ignore_index=ignore_index, reduction=reduction,
                              bce_smooth=bce_smooth, bdc_smooth=smooth, eps=eps)
     elif name == 'bdc':
-        if 'use_sigmoid' in kwargs.keys():
-            use_sigmoid = kwargs['use_sigmoid']
-        else:
-            use_sigmoid = True
-
+        use_sigmoid = kwargs.get('use_sigmoid', True)
         return BinaryDiceLoss(ignore_index=ignore_index, reduction=reduction,
                               use_batch=True, use_sigmoid=use_sigmoid, smooth=smooth, eps=eps)
-
     elif name == 'custom':
         return CustomLoss()
-
     elif name == 'custom_regular':
         return RegularLoss()
     elif name == "custom_multimodal":
         return CustomMultiModalLoss()
+    elif name == 'prior':
+        use_sigmoid = kwargs.get('use_sigmoid', True)
+        prior_threshold = kwargs.get('prior_threshold', 0.10)
+        return SizeConstrainedLoss(use_sigmoid=use_sigmoid, threshold=prior_threshold, reduction=reduction)
+    elif name == 'prior_asymmetric':
+        use_sigmoid = kwargs.get('use_sigmoid', True)
+        prior_threshold = kwargs.get('prior_threshold', 0.10)
+        return SizeConstrainedAsymmetricLoss(use_sigmoid=use_sigmoid, threshold=prior_threshold, reduction=reduction)
     else:
-        if 'activate' in kwargs.keys():
-            activate = kwargs['activate']
-        else:
-            activate = 'softmax'
+        activate = kwargs.get('activate', 'softmax')
         return MutiClassDiceLoss(class_weight=weight, ignore_index=ignore_index, normalization=activate,
                                  reduction=reduction, smooth=smooth, eps=eps)

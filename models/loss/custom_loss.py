@@ -1,3 +1,5 @@
+import torch
+import torch.nn.functional as F
 from torch import nn as nn
 
 from .distribution_based import WBCEWithLogitLoss, BinaryFocalLoss
@@ -74,7 +76,7 @@ class CustomMultiModalLoss(nn.Module):
         self.w_region = 1.0       #
         self.w_distribution = 1.0
 
-        self.pos_weight = 2.0   # Few samples
+        self.pos_weight = 1.0   # Few samples
 
         self.gamma = 2          # hard sample
 
@@ -111,4 +113,117 @@ class CustomMultiModalLoss(nn.Module):
         target_dict, target_loss = self.base_forward(t_out, t_aim, 'target')
         total_loss = self.source_weight * source_loss + self.target_weight * target_loss
         return {**source_dict, **target_dict}, total_loss
+
+
+class SizeConstrainedLoss(nn.Module):
+    def __init__(self, use_sigmoid=False, threshold=0.15, reduction="mean", eps=1e-7):
+        super(SizeConstrainedLoss, self).__init__()
+        self.bound = threshold
+        self.reduction = reduction
+        self.eps = eps
+        self.use_sigmoid = use_sigmoid
+
+    def forward(self, s_pre, t_pre):
+        assert s_pre.size(0) == t_pre.size(0), "output & target batch size don't match"
+        if self.use_sigmoid:
+            s_pre = F.sigmoid(s_pre)
+            t_pre = F.sigmoid(t_pre)
+
+        # s_pre = (s_pre > 0.5).float()
+        # t_pre = (t_pre > 0.5).float()
+
+        s_sum = s_pre.view(s_pre.size(0), -1).sum(-1)
+        t_sum = t_pre.view(t_pre.size(0), -1).sum(-1)
+
+        print("s_sum: ", s_sum.detach().tolist(), "t_sum:", t_sum.detach().tolist())
+        ratio = ((torch.abs((s_sum+t_sum)*(s_sum-t_sum)/(s_sum*t_sum+self.eps))) / 2).float()
+        # ratio = ((torch.abs(s_sum/(t_sum+self.eps)-t_sum/(s_sum+self.eps))) / 2).float()
+        print('ratio: ', ratio.detach().tolist())
+        ratio[ratio < self.bound] = self.bound
+        loss = (ratio - self.bound).pow(2)
+        # loss = ratio - self.bound
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        elif self.reduction == 'none':
+            return loss
+        else:
+            raise Exception('Unexpected reduction {}'.format(self.reduction))
+        # return F.mse_loss(ratio, self.bound, reduction=self.reduction)
+
+
+class SizeConstrainedAsymmetricLoss(nn.Module):
+    def __init__(self, use_sigmoid=False, threshold=0.15, reduction="mean", eps=1e-7):
+        super(SizeConstrainedAsymmetricLoss, self).__init__()
+        self.bound = threshold
+        self.reduction = reduction
+        self.eps = eps
+        self.use_sigmoid = use_sigmoid
+
+    def forward(self, s_pre, t_pre):
+        assert s_pre.size(0) == t_pre.size(0), "output & target batch size don't match"
+        if self.use_sigmoid:
+            s_pre = F.sigmoid(s_pre)
+            t_pre = F.sigmoid(t_pre)
+
+        # s_pre = (s_pre > 0.5).float()
+        # t_pre = (t_pre > 0.5).float()
+
+        s_sum = s_pre.view(s_pre.size(0), -1).sum(-1)
+        t_sum = t_pre.view(t_pre.size(0), -1).sum(-1)
+
+        print("s_sum: ", s_sum.detach().tolist(), "t_sum:", t_sum.detach().tolist())
+        ratio = torch.abs((s_sum-t_sum)/(s_sum+self.eps))
+        print('ratio: ', ratio.detach().tolist())
+        ratio[ratio < self.bound] = self.bound
+        loss = (ratio - self.bound).pow(2)
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        elif self.reduction == 'none':
+            return loss
+        else:
+            raise Exception('Unexpected reduction {}'.format(self.reduction))
+        # return F.mse_loss(ratio, self.bound, reduction=self.reduction)
+
+
+class SizeConstrainedNormLoss(nn.Module):
+    def __init__(self, use_sigmoid=False, threshold=0.15, reduction="mean", eps=1e-7):
+        super(SizeConstrainedNormLoss, self).__init__()
+        self.bound = threshold
+        self.reduction = reduction
+        self.eps = eps
+        self.use_sigmoid = use_sigmoid
+
+    def forward(self, s_pre, t_pre):
+        assert s_pre.size(0) == t_pre.size(0), "output & target batch size don't match"
+        if self.use_sigmoid:
+            s_pre = F.sigmoid(s_pre)
+            t_pre = F.sigmoid(t_pre)
+
+        # s_pre = (s_pre > 0.5).float()
+        # t_pre = (t_pre > 0.5).float()
+
+        s_sum = s_pre.view(s_pre.size(0), -1).sum(-1)
+        t_sum = t_pre.view(t_pre.size(0), -1).sum(-1)
+
+        volume_size = s_pre.nelement()
+
+        print("s_sum: ", s_sum.detach().tolist(), "t_sum:", t_sum.detach().tolist())
+        ratio = torch.abs((s_sum-t_sum)/volume_size)
+        print('ratio: ', ratio.detach().tolist())
+        ratio[ratio < self.bound] = 0
+        loss = ratio.pow(2)
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        elif self.reduction == 'none':
+            return loss
+        else:
+            raise Exception('Unexpected reduction {}'.format(self.reduction))
+        # return F.mse_loss(ratio, self.bound, reduction=self.reduction)
+
 

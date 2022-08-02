@@ -270,6 +270,6 @@ def cal_gradient_penalty(netD, real_data, fake_data, device, type='mixed', const
         return 0.0, None
 
 
-# # Clip weights of discriminator
+# # Clip weights of discriminator, clip_value=0.01
 # for p in discriminator.parameters():
 #     p.data.clamp_(-opt.clip_value, opt.clip_value)

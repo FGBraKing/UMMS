@@ -28,6 +28,7 @@ See our template model class 'template_model.py' for more details.
 import logging
 import importlib
 from models.networks.base_model import BaseModel
+from models.test_networks.test_base import TestBase
 
 
 ddp_logger = logging.getLogger('ddp_logger')
@@ -78,3 +79,20 @@ def create_model(opt):
     ddp_logger.info("model [%s] was created" % type(instance).__name__)
     return instance
 
+
+def create_test_model(opt):
+    model_filename = "models.test_networks.test_" + opt.model_name
+    modellib = importlib.import_module(model_filename)
+    model = None
+    target_model_name = "test" + opt.model_name.replace('_', '')
+    for name, cls in modellib.__dict__.items():
+        if name.lower() == target_model_name.lower() and issubclass(cls, TestBase):
+            model = cls
+
+    if model is None:
+        print("In %s.py, there should be a subclass of BaseModel with class name that matches %s in lowercase." %
+              (model_filename, target_model_name))
+        exit(0)
+
+    instance = model(opt)
+    return instance

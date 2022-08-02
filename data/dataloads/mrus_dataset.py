@@ -168,10 +168,10 @@ class MrusDataset(NIIDataset):
         else:
             bs = 4
 
-        us_data = np.zeros((bs, 96, 128, 128), dtype=np.float32)
-        mr_data = np.zeros((bs, 96, 128, 128), dtype=np.float32)
-        us_data_i = np.zeros((96, 128, 128), dtype=np.float32)
-        mr_data_i = np.zeros((96, 128, 128), dtype=np.float32)
+        us_data = np.zeros((bs, 80, 112, 112), dtype=np.float32)
+        mr_data = np.zeros((bs, 80, 112, 112), dtype=np.float32)
+        us_data_i = np.zeros((80, 112, 112), dtype=np.float32)
+        mr_data_i = np.zeros((80, 112, 112), dtype=np.float32)
 
         print(self.mr_size, self.us_size)
 
@@ -201,13 +201,13 @@ class MrusDataset(NIIDataset):
             mr_spacing = sitk.ReadImage(mr_path['volume']).GetSpacing()
             us_spacing = sitk.ReadImage(us_path['volume']).GetSpacing()
             spacing = ((np.array(mr_spacing) + np.array(us_spacing))/2).tolist()
-            metrics = get_metrics(mr_label, us_label, *metric_names, voxelspacing=spacing)
+            metrics = get_metrics(us_label, mr_label, *metric_names, voxelspacing=spacing)
             metrics_dict = dict(zip(metric_names, metrics))
             print(metrics_dict)
 
     def get_data_roi_rate(self):
         from utils.others.utils import get_foreground_shape
-        image_size = 128*128*96
+        image_size = 112*112*80
         for i in range(self.data_size):
             mr_path = self.mr_paths[i]
             us_path = self.us_paths[i]
@@ -258,7 +258,7 @@ def main():
     # r'elastic_randomscale_ranomrotate_centercrop_'
     parser = argparse.ArgumentParser(description='for the MRI and TRUS dataset')
     parser.add_argument('--dataroot', type=str,
-                        default=r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USviaFenster20-pre12812896')
+                        default=r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280')
     parser.add_argument('--phase', type=str, default='train')
     parser.add_argument('--fold', type=int, default=0)
     parser.add_argument('--seed', type=int, default=1008)
@@ -284,13 +284,13 @@ def main():
     #                  r'GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
     opt.random_state = np.random.RandomState(seed=opt.seed)
     opt.fold = 'all'
-
+    opt.fake_shufflt = False
     print(get_pretty_opt(opt))
     dataset = MrusDataset(opt)
     print(len(dataset))
     with Timer('running with custom_debug, using time:%ss'):
-        dataset.get_data_roi_rate()
-        # dataset.comput_similarity()
+        # dataset.get_data_roi_rate()
+        dataset.comput_similarity()
         # dataset.print_data_describe()
         # dataset.plot_distribution()
         # dataset.custom_debug()
@@ -305,8 +305,8 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
+    main()
 
-    check_data_info(r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280')
+    # check_data_info(r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280')
 
     # r'/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280'
