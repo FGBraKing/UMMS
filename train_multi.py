@@ -40,8 +40,8 @@ def set_local_gpu(args):
 
 
 def train():
-    opt = get_opt(args=['--config_path=configs/defaults/dualstreamtranswithprior_train.yaml', '--use_config', '--use_current_local_rank'])
-
+    opt = get_opt(args=['--config_path=configs/defaults/dsbnwithedge_train.yaml', '--use_config', '--use_current_local_rank'])
+    # dsbnwithauxtask_train   dsbnpluswithedge_train  priorda_train dualstreamtranswithprior_train
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
     assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
 
@@ -76,7 +76,6 @@ def do_train(opt):
         # print(opt.dist_backend, opt.dist_url)
         torch.cuda.empty_cache()
         # 通过这一步把初始化后的rank等参数存入opt，统一不同框架的用法
-        opt = record_distribute_ddp(opt)
 
     on_master = (not opt.DDP) or (opt.DDP and opt.rank == 0)
     init_seed(opt.seed + (opt.rank if opt.DDP else 0))
@@ -286,7 +285,7 @@ def do_train(opt):
                                     for d in range(D):
                                         # visualizer.show_current_images_v2(name+f'N:{d} C{c}',image[:,c:c+1,d],total_iters)
                                         for n in range(N):
-                                            visualizer.show_current_images({name+'N:{} C:{} D:{}'.format(n, c, d): image[n, c, d]}, total_iters)
+                                            visualizer.show_current_images({name+'train_N:{} C:{} D:{}'.format(n, c, d): image[n, c, d]}, total_iters)
                         #                     visuals_refine[name+'N:{} C:{} D:{}'.format(n, c, d)] = image[n, c, d]
                         #     else:
                         #         visuals_refine[name] = image
@@ -344,7 +343,7 @@ def do_train(opt):
                                     for c in range(C):
                                         for d in range(D):
                                             for n in range(N):
-                                                visualizer.show_current_images({name+'N:{} C:{} D:{}'.format(n, c, d): image[n, c, d]}, epoch, suffix=' on test')
+                                                visualizer.show_current_images({name+'test_N:{} C:{} D:{}'.format(n, c, d): image[n, c, d]}, epoch, suffix=' on test')
 
                 now_test_metrics = combine_metrics(test_metrics_all)
 

@@ -212,6 +212,11 @@ class TestGeneric(TestBase):
         self.metric_dict_target = self.compute_metrics_base(self.target_predict_numpy,
                                                             self.target_label_numpy, 'target')
 
+        s_sum = self.source_predict_numpy.sum()
+        t_sum = self.target_predict_numpy.sum()
+        self.metric_dict_source.update({'smravd': (s_sum-t_sum)/(float(t_sum)+1e-7)})
+        self.metric_dict_target.update({'tmravd': (t_sum-s_sum)/(float(s_sum)+1e-7)})
+
     def compute_metrics_base(self, predict, label, domain, *args, **kwargs):
         keys = tuple(self.metric_names) + args
 
@@ -228,6 +233,7 @@ class TestGeneric(TestBase):
             if isinstance(name, str):
                 metrics_ret['source'+name] = self.metric_dict_source[name]
                 metrics_ret['target'+name] = self.metric_dict_target[name]
+        metrics_ret['softravd'] = self.source_predict_numpy.sum() - self.target_predict_numpy.sum()
         return metrics_ret
 
     def get_current_metrics_by_domain(self, domain):
@@ -235,6 +241,7 @@ class TestGeneric(TestBase):
         for name in self.metric_names:
             if isinstance(name, str):
                 metrics_ret[name] = getattr(self, f"metric_dict_{domain}")[name]
+        metrics_ret['softravd'] = self.source_predict_numpy.sum() - self.target_predict_numpy.sum()
         return metrics_ret
 
     def get_current_visuals(self):
@@ -265,7 +272,10 @@ class TestGeneric(TestBase):
                 segment, kept_size, largest_removed = \
                     retain_the_largest_connected_component_binary(segment, volume_per_voxel,
                                                                   self.opt.minimum_valid_object_size)
-                print(f"kept_size: {kept_size:.2f}mm^3, largest_removed: {largest_removed}")
+                try:
+                    print(f"kept_size: {kept_size:.2f}mm^3, largest_removed: {largest_removed}")
+                except TypeError:
+                    print(f"kept_size: {kept_size}mm^3, largest_removed: {largest_removed}")
                 # print(kept_size, largest_removed)
 
             if self.opt.revert:

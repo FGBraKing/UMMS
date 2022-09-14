@@ -60,7 +60,8 @@ def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
     us_paths = [
         {
             'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi')),
+            'dismap': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'dm'))
         }
         for p_id in used_ids
     ]
@@ -68,7 +69,8 @@ def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
     mr_paths = [
         {
             'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi')),
+            'dismap': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'dm'))
         }
         for p_id in used_ids
     ]
@@ -128,6 +130,8 @@ class MrusDataset(NIIDataset):
         us_volume = self.loader(us_path['volume'])
         mr_label = self.loader(mr_path['label'])
         us_label = self.loader(us_path['label'])
+        mr_dm = self.loader(mr_path['dismap'])
+        us_dm = self.loader(us_path['dismap'])
         mr_spacing = sitk.ReadImage(mr_path['volume']).GetSpacing()
         us_spacing = sitk.ReadImage(us_path['volume']).GetSpacing()
         mr_origin_shape = mr_label.shape
@@ -158,7 +162,8 @@ class MrusDataset(NIIDataset):
             'mr_origin_shape': mr_origin_shape, 'mr_now_shape': mr_now_shape,
             'us_volume': us_volume, 'us_volume_path': us_path['volume'],
             'us_label': us_label, 'us_label_path': us_path['label'], 'us_spacing': us_spacing,
-            'us_origin_shape': us_origin_shape, 'us_now_shape': us_now_shape
+            'us_origin_shape': us_origin_shape, 'us_now_shape': us_now_shape,
+            'mr_dismap': mr_dm, 'us_dismap': us_dm
         }
 
     def plot_distribution(self):

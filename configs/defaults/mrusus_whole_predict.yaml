@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrusus12812896_whole_fold0_bs4_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6_2080Ti'
+name : 'mrusus11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_1080Ti'
 phase : 'test'
 predict_name : 'postprocess'
 
@@ -15,7 +15,7 @@ revert : false
 do_connected_component : true
 minimum_valid_object_size : 1000
 
-save_visuals : false
+save_visuals : True
 deterministic : True
 single : Ture
 DEBUG : False
@@ -28,7 +28,7 @@ phase_list : ['train', 'test']
 # ---------------------------------------------------------------------------- #
 # dataset
 dataset_name : 'mrusus'
-fold : 0
+fold : 4
 custom : true
 preprocess : ''
 #   'centercrop'
@@ -50,19 +50,19 @@ input_nc : 1
 output_nc : 1
 init_channel_number : 16
 up_interpolate : False
-conv_order : 'crb'
+conv_order : 'cbl'
 # ---------------------------------------------------------------------------- #
 # path
 # ---------------------------------------------------------------------------- #
-dataroot : './traces/datasets/MR-USviaFenster20-pre12812896'
+dataroot : './traces/datasets/MR-USvia20-full-11211280'
 
-weight_path : './traces/checkpoints/mrus12812896_whole/mrusus12812896_whole_fold0_bs4_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6_2080Ti/latest_net_mrusus12812896_whole_fold0_bs4_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6_2080Ti.pth'
-weight_dir : './traces/checkpoints/mrus12812896_whole/mrusus12812896_whole_fold0_bs4_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_5e-5_poly_3x300_0.6_2080Ti'
-weight_on_dir : true
-
-logs_dir : './traces/logs'
-checkpoints_dir : './traces/checkpoints'
-results_dir : './traces/results'
+weight_path : './traces/checkpoints/SingleModel/mrusus11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_1080Ti/latest_net_mrusus11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_1080Ti.pth'
+weight_dir : './traces/checkpoints/SingleModel/mrusus11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_1080Ti'
+weight_on_dir : false
+#
+logs_dir : './traces/logs/SingleModel'
+checkpoints_dir : './traces/checkpoints/SingleModel'
+results_dir : './traces/results/SingleModel'
 
 # ---------------------------------------------------------------------------- #
 # test

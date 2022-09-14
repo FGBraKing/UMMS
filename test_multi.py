@@ -37,7 +37,7 @@ domain_map_modal = {'source': 'mr', 'target': 'us'}
 
 def main_predict():
     parser = ArgumentParser(description="Project's useful tool to parse args")
-    parser.add_argument('--config_name', type=str, default='dsbn', help='the name of config')
+    parser.add_argument('--config_name', type=str, default='adversarial', help='the name of config')
     parser.add_argument('--second', type=int, default=1, help='wait some second and then run')
     parser.add_argument('training_script_args', nargs=REMAINDER, help='training_script_args')
     args = parser.parse_args()
@@ -125,7 +125,7 @@ def do_predict(opt):
             all_source_result_metrics.append(source_metrics_ret)
             all_target_result_metrics.append(target_metrics_ret)
 
-            message = "number {} paitent metrics on experiment: {}\n".format(patient_id, opt.name)
+            message = "number {} paitent {} metrics on experiment: {}\n".format(patient_id, volume_name, opt.name)
             for k, v in metrics_ret.items():
                 try:
                     message += '%s: %.4f ' % (k, v)
@@ -165,7 +165,10 @@ def combine_metrics(name, metrics_list=None, **kwargs):
         value = 0
         try:
             for v in metrics_list:
-                value += v[key]
+                if v[key] > 0:
+                    value += v[key]
+                else:
+                    value -= v[key]
         except TypeError as e:
             print('some worng of key :{} with value: {}'.format(key, metrics_list[0][key]))
             continue

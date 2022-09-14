@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrus11211280_fold0_bs4_DualStreamV1_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlus_TITAN'
+name : 'mrus11211280_fold4_bs4_SingleTarget_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlus_TITAN'
 phase : 'test'
 test_name : 'centercrop_postprocess'
 
@@ -19,8 +19,10 @@ deterministic : True
 DEBUG : False
 verbose : false
 
-weight_name : 'latest_net_mrus11211280_fold0_bs4_DualStreamV1_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlus_TITAN.pth'
-weight_on_dir : true
+fold : 4
+network_type : 'single'
+weight_name : 'latest_net_mrus11211280_fold4_bs4_SingleTarget_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlus_TITAN.pth'
+weight_on_dir : false
 
 #single : false
 #gpu_ids : [0,1]
@@ -31,7 +33,6 @@ weight_on_dir : true
 # ---------------------------------------------------------------------------- #
 # dataset
 dataset_name : 'mrusplusplus'
-fold : 0
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
 serial_batches: True
 custom : true
@@ -53,7 +54,6 @@ num_threads : 8
 # model
 # ---------------------------------------------------------------------------- #
 model_name : 'dualstream'
-network_type : 'V1'
 input_nc : 1
 output_nc : 1
 init_channel_number : 16
@@ -62,10 +62,10 @@ up_interpolate: True
 # path
 # ---------------------------------------------------------------------------- #
 
-logs_dir : './traces/logs//DualStream'
-checkpoints_dir : './traces/checkpoints/DualStream'
-results_dir : './traces/results/DualStream'
-
+logs_dir : './traces/logs/SingleOne'
+checkpoints_dir : './traces/checkpoints/SingleOne'
+results_dir : './traces/results/SingleOne'
+# SingleBoth DualStream
 # ---------------------------------------------------------------------------- #
 # test
 # ---------------------------------------------------------------------------- #

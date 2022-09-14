@@ -130,7 +130,8 @@ class DualStreamTransWithPriorModel(BaseModel):
             # self.criterionRoutineMulti = get_loss_criterion(name='custom_multimodal')
             self.criterionRegular = get_loss_criterion(name='custom_regular')
             # self.criterionPrior = get_loss_criterion(name='prior', prior_threshold=opt.prior_threshold)
-            self.criterionPrior = get_loss_criterion(name='prior_asymmetric', prior_threshold=opt.prior_threshold, reduction='sum')
+            # self.criterionPrior = get_loss_criterion(name='prior_norm', prior_threshold=opt.prior_threshold)
+            self.criterionPrior = get_loss_criterion(name='prior_asymmetric', prior_threshold=opt.prior_threshold)
 
             optimizer_kwargs = {'eps': 1e-8,
                                 'betas': (opt.optim_beta, 0.999)
@@ -162,6 +163,7 @@ class DualStreamTransWithPriorModel(BaseModel):
         self.source_predict = None
         self.target_predict = None
         self.spacing = None
+        self.label_ratio = None
 
         self.loss_routine = None
         self.loss_regular = None
@@ -188,6 +190,8 @@ class DualStreamTransWithPriorModel(BaseModel):
         self.volume_path = {'source': inputs['mr_volume_path'], 'target': inputs['us_volume_path']}
         self.label_path = {'source': inputs['mr_label_path'],  'target': inputs['us_label_path']}
         self.spacing = {'source': inputs['mr_spacing'].mean(0).tolist(), 'target': inputs['us_spacing'].mean(0).tolist()}
+        self.label_ratio = {'source': self.source_label.sum((1, 2, 3, 4)),
+                            'target': self.target_label.sum((1, 2, 3, 4))}
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
@@ -202,21 +206,19 @@ class DualStreamTransWithPriorModel(BaseModel):
             self.loss_item_dict = self.record_loss_item("source")
             self.loss_regular = self.criterionRegular(self.net_umms.parameters())
 
-            self.loss_prior = self.criterionPrior(self.source_predict, self.target_predict)
+            self.loss_prior = 1e4*self.criterionPrior(self.label_ratio['source'], self.target_predict, uselabel=True)
 
-            if ex_config.current_epoch < self.opt.warmup_epochs:
+            if ex_config.current_epoch < 0:
                 prior_gamma = 0
             else:
                 prior_gamma = self.prior_gamma_base
             # print(f"prior_gamma: {prior_gamma}")
-            self.loss_total = self.loss_routine + 1e-4 * self.loss_regular + prior_gamma * self.loss_prior
+            self.loss_total = 1e-4*self.loss_regular + self.loss_routine + prior_gamma*1e-4*self.loss_prior
 
         self.loss_total = self.loss_total / self.opt.gradient_accumulation_k_step
 
         if self.opt.use_mixed_precision:
             self.scaler.scale(self.loss_total).backward()
-            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
-            self.scaler.update()
         else:
             self.loss_total.backward()
 
@@ -226,11 +228,18 @@ class DualStreamTransWithPriorModel(BaseModel):
             errors_ret[domain + key] = item
         return errors_ret
 
+    def optimizer_step(self):
+        if self.opt.use_mixed_precision:
+            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
+            self.scaler.update()
+        else:
+            self.optimizer.step()
+
     def optimize_parameters(self, update=True):
         if update:
             self.forward()
             self.backward()
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
         else:
             with self.no_sync_context():
@@ -277,6 +286,7 @@ class DualStreamTransWithPriorModel(BaseModel):
             if isinstance(name, str):
                 metrics_ret['source'+name] = self.metric_dict_source[name]
                 metrics_ret['target'+name] = self.metric_dict_target[name]
+        metrics_ret['mravd'] = 1 - self.target_predict.sum()/self.label_ratio['source'].sum()
         return metrics_ret
 
     def get_current_visuals(self):
@@ -291,7 +301,7 @@ class DualStreamTransWithPriorModel(BaseModel):
 def main():
     from configs.options.dataset_network import ProjectOptions
     opt = ProjectOptions().parse(True)   # get training options
-    model = DualStreamTransWirhPriorModel(opt)
+    model = DualStreamTransWithPriorModel(opt)
     opt.continue_train = True
     model.setup(opt)
 

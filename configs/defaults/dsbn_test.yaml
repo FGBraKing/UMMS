@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrus11211280_fold0_bs4_dsbn_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlusMerge_2080Ti'
+name : 'mrus11211280_fold4_bs4_dsbn_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlusMerge_TITAN'
 phase : 'test'
 test_name : 'centercrop_postprocess'
 
@@ -14,13 +14,14 @@ revert : false
 do_connected_component : true
 minimum_valid_object_size : 40
 
-save_visuals : false
+save_visuals : true
 deterministic : True
 DEBUG : False
 verbose : false
 
-weight_name : 'latest_net_mrus11211280_fold0_bs4_dsbn_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlusMerge_2080Ti.pth'
-weight_on_dir : true
+fold : 4
+weight_name : 'latest_net_mrus11211280_fold4_bs4_dsbn_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlusMerge_TITAN.pth'
+weight_on_dir : false
 
 #single : false
 #gpu_ids : [0,1]
@@ -31,7 +32,6 @@ weight_on_dir : true
 # ---------------------------------------------------------------------------- #
 # dataset
 dataset_name : 'mrusplusplus'
-fold : 0
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
 serial_batches: True
 custom : true
@@ -69,7 +69,7 @@ results_dir : './traces/results/DSBN'
 # test
 # ---------------------------------------------------------------------------- #
 eval : True
-metric_names : ['basic_metrics', 'dice', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd', 'roisize']
+metric_names : ['basic_metrics', 'dice', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd', 'roisize', 'mravd']
 visual_names : ['volume', 'predict', 'label']
 
 

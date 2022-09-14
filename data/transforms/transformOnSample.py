@@ -483,7 +483,7 @@ class RandomRotateTransform:
                 if np.random.uniform() < self.p_rot_per_axis:
                     data = rotate(data, angle, axes=i_axes, reshape=True, order=3, mode='constant', cval=0.0, prefilter=True)
                     if seg is not None:
-                        seg = rotate(seg, angle, axes=i_axes, reshape=True, order=0, mode='constant', cval=-1, prefilter=False)
+                        seg = rotate(seg, angle, axes=i_axes, reshape=True, order=0, mode='constant', cval=0.0, prefilter=False)
 
         return data, seg
 

@@ -44,8 +44,9 @@ def train():
     # opt = ProjectOptions().parse(True)   # get training options
     # opt = get_opt(args=None)
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml', '--use_config'])
-    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_unet_train.yaml', '--use_config',
+    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_whole_train.yaml', '--use_config',
                         '--use_current_local_rank'])
+    # mrusmr_unet_train.yaml    regression_train.yaml   mrusus_unet_train   mrusmr_whole_train
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml','--use_config', '--use_current_local_rank'])
 
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)

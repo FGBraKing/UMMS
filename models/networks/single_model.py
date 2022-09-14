@@ -1,5 +1,5 @@
 import warnings
-
+import copy
 import torch
 import logging
 import contextlib
@@ -79,8 +79,7 @@ class SingleModel(BaseModel):
             self.criterionRegular = get_loss_criterion(name='custom_regular')
 
             optimizer_kwargs = {'eps': 1e-8,
-                                'betas': (opt.optim_beta, 0.999)
-                                }
+                                'betas': (opt.optim_beta, 0.999)}
             if 'sgd' in opt.optimizer_name.lower():
                 optimizer_kwargs.pop('betas', None)
             self.optimizer = create_optimizer_v2(self.net_segment.parameters(),
@@ -94,7 +93,7 @@ class SingleModel(BaseModel):
             self.schedulers = [create_scheduler(opt, optimizer)[0] for optimizer in self.optimizers]
 
         self.visual_names = ['predict', 'label', 'volume']
-        self.metric_names = ['DC', 'ravd', 'recall', 'precision', 'specificity', 'accuracy']
+        self.metric_names = ['DC', 'ravd', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'assd', 'asd', 'ravd']    # , 'hd', 'hd95', 'assd', 'asd', 'ravd'
         # 'hd' 'hd95' 'assd' 'asd'  'ravd'
 
         self.get_metrics = BinaryMetrics()
@@ -143,16 +142,21 @@ class SingleModel(BaseModel):
 
         if self.opt.use_mixed_precision:
             self.scaler.scale(self.loss_total).backward()
+        else:
+            self.loss_total.backward()
+
+    def optimizer_step(self):
+        if self.opt.use_mixed_precision:
             self.scaler.step(self.optimizer)  # maybe apply to all optimizers
             self.scaler.update()
         else:
-            self.loss_total.backward()
+            self.optimizer.step()
 
     def optimize_parameters(self, update=True):
         if update:
             self.forward()
             self.backward()
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
         else:
             with self.no_sync_context():
@@ -169,13 +173,21 @@ class SingleModel(BaseModel):
             self.predict = self.finally_activate(self.predict)
             self.is_activated = True
 
-        keys = tuple(self.metric_names) + args
+        metric_names = copy.deepcopy(self.metric_names)
+        if self.net_segment.training:
+            metric_names.remove('hd')
+            metric_names.remove('hd95')
+            metric_names.remove('assd')
+            metric_names.remove('asd')
+            metric_names.remove('ravd')
+        # 'hd95', 'assd', 'asd', 'ravd'
+        keys = tuple(metric_names) + args
 
         predict = self.predict.clone().detach()
         label = self.label.clone().detach()
         predict = (predict > 0.5).float()
         label = (label > 0.5).float()
-        self.metrics = self.get_metrics_soft(predict, label, *self.metric_names,
+        self.metrics = self.get_metrics_soft(predict, label, *metric_names,
                                              *args, **kwargs, voxelspacing=self.spacing)
 
         if self.opt.DDP:
@@ -196,7 +208,7 @@ class SingleModel(BaseModel):
             'stride': (16, 16, 8),      # 3*3*3
             'no_augment': True,
             'visual_names': ('segment', 'label', 'origin_volume'),
-            'metric_names': ('DC', 'ravd', 'recall', 'precision', 'specificity', 'accuracy')
+            'metric_names': ('DC', 'ravd', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'assd', 'asd', 'ravd')    #
         }
         self.metric_dict, visuals = test_during_train(one_patient, self.net_segment,
                                                       SimpleNamespace(**kwargs), self.device)

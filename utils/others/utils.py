@@ -544,6 +544,23 @@ class DataPool(object):
         self.complete_data.clear()
 
 
+def get_gaussian_kernel(k=3, mu=0, sigma=1, normalize=True):
+    # compute 1 dimension gaussian
+    gaussian_1D = np.linspace(-1, 1, k)
+    # compute a grid distance from center
+    x, y = np.meshgrid(gaussian_1D, gaussian_1D)
+    distance = (x ** 2 + y ** 2) ** 0.5
+
+    # compute the 2 dimension gaussian
+    gaussian_2D = np.exp(-(distance - mu) ** 2 / (2 * sigma ** 2))
+    gaussian_2D = gaussian_2D / (2 * np.pi *sigma **2)
+
+    # normalize part (mathematically)
+    if normalize:
+        gaussian_2D = gaussian_2D / np.sum(gaussian_2D)
+    return gaussian_2D
+
+
 # --------------------------from https://github.com/lucidrains/stylegan2-pytorch/blob/master/stylegan2_pytorch/cli.py
 
 def cast_list(el):

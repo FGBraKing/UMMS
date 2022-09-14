@@ -22,7 +22,9 @@ from data.utils_data import get_pad_image, get_unpad_image
 # from models.modules.segmentation.three_d.unet3d_V1 import UNet3D as UNetV1
 # from models.modules.segmentation.three_d.unet3d_V2 import UNet3D as UNetV2
 # from models.modules.segmentation.three_d.unet3d_V3 import UNet3D as UNetV3
-from models.modules.segmentation_model.unet_custom import UnetCustom as UNet
+# from models.modules.segmentation_model.unet_custom import UnetCustom as UNet
+from models.modules.MultimodalSegmentation.DualStream import SingleUnet as UNet
+from models.modules.MultimodalSegmentation import SingleUnet
 from utils.forLogs import get_logger
 from utils.others.metrics import BinaryMetrics
 from utils.others.utils import init_seed, init_torch, mkdirs, Timer, print_numpy
@@ -32,7 +34,7 @@ from argparse import ArgumentParser, REMAINDER, ZERO_OR_MORE, OPTIONAL
 
 def test():
     parser = ArgumentParser(description="Project's useful tool to parse args")
-    parser.add_argument('--config_name', type=str, default='mrusmr_unet', help='the name of config')
+    parser.add_argument('--config_name', type=str, default='mrusus_unet', help='the name of config')
     parser.add_argument('--second', type=int, default=1, help='wait some second and then run')
     parser.add_argument('training_script_args', nargs=REMAINDER, help='training_script_args')
     args = parser.parse_args()
@@ -232,8 +234,16 @@ def define_net(opt, device=torch.device('cpu')):
     #              final_sigmoid=True,
     #              conv_layer_order=opt.conv_order,
     #              init_channel_number=opt.init_channel_number)
-    net = UNet(norm_type='batch', in_channels=opt.input_nc, n_class=opt.output_nc, deptp=4,
-               init_channel_number=opt.init_channel_number, final_sigmoid=False)   # cbr
+    # net = UNet(norm_type='batch', in_channels=opt.input_nc, n_class=opt.output_nc, deptp=4,
+    #            init_channel_number=opt.init_channel_number, final_sigmoid=False)   # cbr
+    net = SingleUnet(opt.input_nc, opt.output_nc,
+                     f_maps=opt.init_channel_number,
+                     num_levels=5,
+                     with_activation=False,
+                     final_sigmoid=True,
+                     interpolation=True,
+                     norm_type="batch",
+                     act_type="lrelu").to(device)
     # net = net.cuda()
     net = net.to(device)
 

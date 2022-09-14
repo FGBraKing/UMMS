@@ -77,13 +77,14 @@ class DsbnWithPriorModel(BaseModel):
         self.net_umms = define_model(opt, self.device, self.domains)
         self.finally_activate = get_activation('sigmoid').to(self.device)
 
-        self.loss_names = ['regular', 'routine', 'kd', 'prior', 'total']  #
+        self.loss_names = ['regular', 'routine', 'prior', 'total']  # 'kd',
 
         if self.isTrain:
             self.criterionRoutineMulti = get_loss_criterion(name='custom_multimodal')
             self.criterionRegular = get_loss_criterion(name='custom_regular')
             self.criterionKD = BinaryKDLoss(temperature=2, eps=1e-3)
             self.criterionPrior = get_loss_criterion(name='prior', prior_threshold=opt.prior_threshold)
+            # self.criterionPrior = get_loss_criterion(name='prior_norm', prior_threshold=opt.prior_threshold)
 
             optimizer_kwargs = {'eps': 1e-8,
                                 'betas': (opt.optim_beta, 0.999)
@@ -154,9 +155,9 @@ class DsbnWithPriorModel(BaseModel):
             self.loss_item_dict, self.loss_routine = self.criterionRoutineMulti(self.source_predict, self.source_label,
                                                                                 self.target_predict, self.target_label)
             self.loss_regular = self.criterionRegular(self.net_umms.parameters())
-            pos_kd, neg_kd, self.loss_kd = self.criterionKD(self.source_predict, self.source_label,
-                                                            self.target_predict, self.target_label)
-            self.loss_item_dict.update({"pos_kd": pos_kd, "neg_kd": neg_kd})
+            # pos_kd, neg_kd, self.loss_kd = self.criterionKD(self.source_predict, self.source_label,
+            #                                                 self.target_predict, self.target_label)
+            # self.loss_item_dict.update({"pos_kd": pos_kd, "neg_kd": neg_kd})
             self.loss_prior = self.criterionPrior(self.source_predict, self.target_predict)
 
             if ex_config.current_epoch < self.opt.warmup_epochs:
@@ -169,8 +170,6 @@ class DsbnWithPriorModel(BaseModel):
 
         if self.opt.use_mixed_precision:
             self.scaler.scale(self.loss_total).backward()
-            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
-            self.scaler.update()
         else:
             self.loss_total.backward()
 
@@ -180,11 +179,18 @@ class DsbnWithPriorModel(BaseModel):
             errors_ret[domain+key] = item
         return errors_ret
 
+    def optimizer_step(self):
+        if self.opt.use_mixed_precision:
+            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
+            self.scaler.update()
+        else:
+            self.optimizer.step()
+
     def optimize_parameters(self, update=True):
         if update:
             self.forward()
             self.backward()
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
         else:
             with self.no_sync_context():

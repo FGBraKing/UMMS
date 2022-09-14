@@ -2,16 +2,16 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrus11211280_fold4_bs4_SingleSourceTransWithPrior_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6'
+name : 'mrus11211280_fold0_bs4_SingleSourceTransWithPrior_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_2x40_0.6'
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
 prefix: ~
-suffix : 'asymmetric_gamma1_threshold30_pow2_soft_sum'
+suffix : 'asymmetric_gamma1_threshold10_pow2_soft'
 
-fold : 4
-visible_gpu : !!str "'6'"
+fold : 0
+visible_gpu : !!str "'3'"
 network_type : 'single'
 prior_gamma: 1
-prior_threshold: 0.30
+prior_threshold: 0.10
 
 
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
@@ -33,14 +33,14 @@ optimizer_name : 'adam'
 lr : 1e-4
 
 lr_policy : 'poly'
-lr_cycle_num : 3
+lr_cycle_num : 2
 lr_cycle_decay : 0.6
 
 decay_epochs : 100
 decay_rate : 0.5
 # 在poly学习率策略中，decay_rate作为power使用
 
-num_epochs : 30
+num_epochs : 40
 epoch_start : 1
 continue_train : false
 weight_path : './traces/checkpoints/......'
@@ -172,9 +172,9 @@ deterministic : True
 #suffix : ''
 #verbose : true
 # --files path
-logs_dir : './traces/logs/DualStreamTransWithPrior'
-results_dir : './traces/results/DualStreamTransWithPrior'
-checkpoints_dir : './traces/checkpoints/DualStreamTransWithPrior'
+logs_dir : './traces/logs/SingleTransWithPrior'
+results_dir : './traces/results/SingleTransWithPrior'
+checkpoints_dir : './traces/checkpoints/SingleTransWithPrior'
 optimizer_path : ~
 # --basic train
 #epoch_start : 1

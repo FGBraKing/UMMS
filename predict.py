@@ -19,6 +19,7 @@ from data.connected_components import retain_the_largest_connected_component_bin
 # from models.modules.segmentation.three_d.unet3d_V2 import UNet3D as UNetV2
 # from models.modules.segmentation.three_d.unet3d_V3 import UNet3D as UNetV3
 from models.modules.segmentation_model.unet_custom import UnetCustom as UNet
+from models.modules.MultimodalSegmentation import SingleUnet
 from utils.forLogs import get_logger
 from utils.others.metrics import BinaryMetrics, MutiClassMetrics
 from utils.others.utils import init_seed, init_torch, mkdirs, Timer, convert_str_to_list
@@ -28,7 +29,7 @@ from utils.others.img_io import show_paired_image, show_array_3d, show_volume_la
 def main_predict():
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d_test.yaml', '--use_config'], save_log=False)
     # opt_dict = get_config('configs/defaults/trus_unet3d_predict.yaml')
-    config_name = r'mrusmr_unet'
+    config_name = r'mrusus_whole'        # mrusmr_unet
     opt_dict = get_config(f'configs/defaults/{config_name}_predict.yaml')
     opt = SimpleNamespace(**opt_dict)
 
@@ -203,9 +204,17 @@ def define_net(opt, device=torch.device('cpu')):
     #              final_sigmoid=True,
     #              conv_layer_order=opt.conv_order,
     #              init_channel_number=opt.init_channel_number)
-    net = UNet(norm_type='batch',
-               in_channels=opt.input_nc, n_class=opt.output_nc,
-               deptp=4, init_channel_number=opt.init_channel_number)  # cbr
+    # net = UNet(norm_type='batch',
+    #            in_channels=opt.input_nc, n_class=opt.output_nc,
+    #            deptp=4, init_channel_number=opt.init_channel_number)  # cbr
+    net = SingleUnet(opt.input_nc, opt.output_nc,
+                     f_maps=opt.init_channel_number,
+                     num_levels=5,
+                     with_activation=False,
+                     final_sigmoid=True,
+                     interpolation=True,
+                     norm_type="batch",
+                     act_type="lrelu").to(device)
 
     net = net.to(device)
 

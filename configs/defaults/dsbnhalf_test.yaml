@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrus11211280_fold0_bs4_dsbnhalf_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlusMerge_2080Ti'
+name : 'mrus11211280_fold4_bs4_dsbnhalfwithprior_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_prior_norm_gamma100_threshold2_pow2_TITAN'
 phase : 'test'
 test_name : 'centercrop_postprocess'
 
@@ -14,13 +14,14 @@ revert : false
 do_connected_component : true
 minimum_valid_object_size : 40
 
-save_visuals : true
+save_visuals : false
 deterministic : True
 DEBUG : False
 verbose : false
 
-weight_name : 'latest_net_mrus11211280_fold0_bs4_dsbnhalf_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlusMerge_2080Ti.pth'
-weight_on_dir : true
+fold : 4
+weight_name : 'latest_net_mrus11211280_fold4_bs4_dsbnhalfwithprior_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_prior_norm_gamma100_threshold2_pow2_TITAN.pth'
+weight_on_dir : false
 
 #single : false
 #gpu_ids : [0,1]
@@ -31,7 +32,6 @@ weight_on_dir : true
 # ---------------------------------------------------------------------------- #
 # dataset
 dataset_name : 'mrusplusplus'
-fold : 0
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
 serial_batches: True
 custom : true
@@ -62,15 +62,15 @@ up_interpolate: True
 # path
 # ---------------------------------------------------------------------------- #
 
-logs_dir : './traces/logs//DSBNHalf'
-checkpoints_dir : './traces/checkpoints/DSBNHalf'
-results_dir : './traces/results/DSBNHalf'
+logs_dir : './traces/logs/DSBNHalfWithPrior'
+checkpoints_dir : './traces/checkpoints/DSBNHalfWithPrior'
+results_dir : './traces/results/DSBNHalfWithPrior'
 
 # ---------------------------------------------------------------------------- #
 # test
 # ---------------------------------------------------------------------------- #
 eval : True
-metric_names : ['basic_metrics', 'dice', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd', 'roisize']
+metric_names : ['basic_metrics', 'dice', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd', 'roisize', 'mravd']
 visual_names : ['volume', 'predict', 'label']
 
 

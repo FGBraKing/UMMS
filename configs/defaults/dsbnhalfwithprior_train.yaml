@@ -5,12 +5,12 @@
 name : 'mrus11211280_fold4_bs4_dsbnhalfwithprior_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6'
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
 prefix: ~
-suffix : 'DSBNHalfWithPrior_gamma1_threshold15_pow1'
+suffix : 'prior_norm_gamma100_threshold2_pow2'
 
 fold : 4
-visible_gpu : !!str "'6'"
-prior_gamma: 1
-prior_threshold: 0.15
+visible_gpu : !!str "'4'"
+prior_gamma: 100
+prior_threshold: 0.02
 
 dataset_name : 'mrusplusplus'
 proxy_two : False

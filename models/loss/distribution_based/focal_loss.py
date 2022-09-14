@@ -23,8 +23,8 @@ class BinaryFocalLoss(nn.Module):
         assert reduction in ['none', 'mean', 'sum']
         self.alpha = alpha
         self.gamma = gamma
-        self.eps = eps
-        self.smooth = smooth  # set '1e-4' when train with FP16
+        self.eps = eps          # set '5e-4' when train with FP16
+        self.smooth = smooth
         self.ignore_index = ignore_index
         self.reduction = reduction
 

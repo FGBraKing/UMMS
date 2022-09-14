@@ -1,0 +1,242 @@
+---
+# ---------------------------------------------------------------------------- #
+# basic
+# ---------------------------------------------------------------------------- #
+name : 'mrus11211280_fold1_bs4_dsbnfusewithdeepsupervised_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_2x40_0.6'
+# 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
+prefix: ~
+suffix : 'deepsupervised10_Norm_prior_gamma1000_threshold2_pow2_soft_amp'
+# Norm_prior_gamma100_threshold2_pow2_soft
+# Norm_prior_gamma1000_threshold2_pow2_soft_amp
+# std_no_prior_amp
+fold : 1
+visible_gpu : !!str "'0'"
+prior_gamma: 1000
+prior_threshold: 0.02
+
+
+dataset_name : 'mrusplusplus'
+proxy_two : False
+preprocess :  'elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+# elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform
+
+dataroot : './traces/datasets/MR-USvia20-full-11211280'
+batch_size : 4
+gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
+DEBUG : False
+verbose : false
+# '0,''1,''2,''3'
+
+model_name : 'dsbnfusewithdeeppriorsupervised'
+network_type : 'dsbnfusewithdeeppriorsupervised'
+init_channel_number : 16
+conv_order : 'cbl'
+loss_opt : 'using custom, 1*bdc+1*bce, pos-weight=1, 1e-4_l2'
+optimizer_name : 'adam'
+lr : 1e-4
+
+lr_policy : 'poly'
+lr_cycle_num : 2
+lr_cycle_decay : 0.6
+
+decay_epochs : 100
+decay_rate : 0.5
+# 在poly学习率策略中，decay_rate作为power使用
+
+epoch_start : 1
+continue_train : false
+weight_path : './traces/checkpoints/......'
+
+# --------------------------------------------------------------------------------------- #
+# 数据参数：包括数据集参数和数据增强参数
+# --------------------------------------------------------------------------------------- #
+# --dataset
+#dataroot : './traces/datasets/MR-USviaFenster20-pre12812896'
+phase : 'train'
+#fold : 0
+#serial_batches : true
+#fake_shufflt : False
+# preprocess : 'randomcrop_centercrop_rot90_mirror'
+custom : true
+crop_size : [112, 112, 80]
+target_size : [112, 112, 80]
+source_crop_size : [112, 112, 80]
+target_crop_size : [112, 112, 80]
+crop_stride : [1, 1, 1]
+#order_data: 3
+#order_seg: 1
+#elastic_alpha : [0., 70]
+#elastic_sigma : [8., 12.]
+#scale: [1, 1, 1]
+#scale_range : [0.7, 1.3]
+rot_angle_spectrum: 30
+rot_axes: [1, 2]
+mirror_axes: [0, 1, 2]
+#g_noise_variance: [0.0, 0.1]
+#blur_sigma : [0.5, 1.5]
+#bright_mu : 0.0
+#bright_sigma : 0.1
+#bright_multiplier_range: [0.7, 1.3]
+#contrast_range : [0.65, 1.35]
+#simulate_zoom_range : [0.5, 1]
+#gamma_range : [0.7, 1.3]
+
+# --dataloader
+# batch_size : 1
+data_shuffle : true
+num_threads : 8
+drop_last : False
+# ----------------------------------------------------------------------------------- #
+# 网络参数：包括模块超参数和初始化参数
+# ----------------------------------------------------------------------------------- #
+# --model
+input_nc : 1
+output_nc : 1
+#init_channel_number : 16
+up_interpolate : True
+#conv_order : 'crb'
+# --initialization
+#init_type : 'kaiming'
+#init_gain : 1.4142135623730951
+#init_std : 0.02
+# ----------------------------------------------------------------------------------- #
+# 优化参数：包括优化器、学习率和损失函数等
+# ----------------------------------------------------------------------------------- #
+# --loss
+loss_name: 'custom'
+#loss_alpha : 1.0
+#loss_beta : 1.0
+#loss_gamma : 1.0
+#loss_weight : 1.0
+#loss_eps : 1e-7
+#loss_smooth : 1.0
+#reduction : 'mean'
+#ignore_index : ~
+# --optimizer
+#optimizer_name : 'adam'
+#lr : 2e-4
+#weight_decay : 0.0
+# momentum : 0.9
+# optim_beta : 0.9
+# --scheduler
+#lr_policy : 'cosine'
+
+lr_noise : ~
+lr_noise_pct : 0.67
+lr_noise_std : 1.
+
+warmup_lr : 1e-6
+warmup_epochs : 10
+warmup_prefix : True
+
+lr_cycle_mul : 1.0
+#lr_cycle_decay : 0.6
+lr_cycle_limit : 5
+#cooldown_epochs : 10
+
+#min_lr : 1e-7
+#decay_epochs : 100
+#decay_rate : 0.3
+#lr_k_decay : 1.0
+#eval_metric : ''
+#patience_epochs : 20
+# ---------------------------------------------------------------------------- #
+# 训练技巧，包括梯度累计、混合精度、多卡加速等
+# ---------------------------------------------------------------------------- #
+# --gradient_accumulation
+use_gradient_accumulation : False
+gradient_accumulation_k_step : 1
+# --mixed_precision
+use_mixed_precision : True
+# --DDP
+DP : False
+DDP : False
+SyncBatchNorm : True
+world_size : 4
+rank : 0
+local_rank : -1
+dist_url : 'tcp://127.0.0.1:52001'
+# ---------------------------------------------------------------------------- #
+# 可视化、保存频率、打印频率、文件路径等辅助参数
+# ---------------------------------------------------------------------------- #
+# --basic
+#name : 'mrusmr_unet3d_969632_bs12_ch32_kaiming_combo_1.0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
+#dataset_name : 'mrusplus'
+#model_name : 'ummkd'
+#seed : 1008
+#gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
+#visible_gpu : !!str "'0,1,2,3'"
+# '0,''1,''2,''3'
+isTrain : True
+single : false
+#DEBUG : False
+deterministic : True
+# --additional
+#suffix : ''
+#verbose : true
+# --files path
+logs_dir : './traces/logs/DSBNFuseWithDeepSupervised'
+results_dir : './traces/results/DSBNFuseWithDeepSupervised'
+checkpoints_dir : './traces/checkpoints/DSBNFuseWithDeepSupervised'
+optimizer_path : ~
+# --basic train
+#epoch_start : 1
+num_epochs : 40
+#continue_train : false
+# --network saving and loading
+#save_epoch_start : 1
+#save_epoch_freq : 5
+save_iter_start : 50000
+save_iter_freq : 500
+save_by_iter : false
+# --network print and showing
+display_freq : 12
+print_freq : 1
+plot_freq : 1
+val_epoch_freq : 1
+test_on_train : true
+# --visualer
+with_tensorboard : False
+save_log : True
+save_visuals : True
+save_only_latest : True
+save_visuals_frep : 1
+# --tensorboard and logging
+draw_model : False
+display_on_tensorboard: False
+display_histogram: False
+play_video : False
+
+# ---------------------------------------------------------------------------- #
+# test
+# ---------------------------------------------------------------------------- #
+eval : True
+test_data_phase : 'test'
+
+test_batchsize : 1
+test_preprocess : ''
+
+#slide_test: false
+#slide_test_batchsize : 8
+# test_scale : [0.8, 0.8, 0.8]
+# resize centercrop
+# 56057    760337
+# 2949120  2949120
+# 0.0190    0.2578
+
+
+...
+
+#             [0.5, 1]   0.01
+# noise_args: lr_noise lr_noise_pct lr_noise_std seed
+# warmup_args: warmup_lr warmup_epochs warmup_prefix
+# cycle_args: lr_cycle_mul lr_cycle_decay lr_cycle_limit
+# other_args: num_epochs min_lr  lr_k_decay  cooldown_epochs decay_rate decay_epochs patience_epochs eval_metric
+
+#    cosine:  num_epochs min_lr  lr_k_decay  cooldown_epochs
+#      tanh:  num_epochs min_lr              cooldown_epochs
+#      poly:  num_epochs min_lr  lr_k_decay  cooldown_epochs decay_rate
+#    linear:             min_lr                                         decay_epochs
+#      step:                                                 decay_rate decay_epochs
+# multistep:                                                 decay_rate decay_epochs
+#   plateau:             min_lr                              decay_rate              patience_epochs eval_metric

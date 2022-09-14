@@ -18,7 +18,8 @@ from .custom_loss import *
 
 SUPPORTED_LOSSES = ['bdc', 'dc', 'bce', 'ce', 'wce', 'pce', 'asymmetric', 'b_focal', 'focal', 'jsd', 'l1', 'l2', 'mse',
                     'lovasz', 'BinaryTversky', 'MultiTversky', 'tversky', 'combo', 'others',
-                    'custom', 'custom_regular', 'custom_multimodal', 'prior', 'prior_asymmetric']
+                    'custom', 'custom_regular', 'custom_multimodal',
+                    'prior', 'prior_asymmetric', 'prior_norm', 'prior_feature']
 
 
 # --------------------------------------------------------CUSTOM------------------------------------------------
@@ -112,11 +113,11 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
         return BinaryDiceLoss(ignore_index=ignore_index, reduction=reduction,
                               use_batch=True, use_sigmoid=use_sigmoid, smooth=smooth, eps=eps)
     elif name == 'custom':
-        return CustomLoss()
+        return CustomLoss(**kwargs)
     elif name == 'custom_regular':
-        return RegularLoss()
+        return RegularLoss(**kwargs)
     elif name == "custom_multimodal":
-        return CustomMultiModalLoss()
+        return CustomMultiModalLoss(**kwargs)
     elif name == 'prior':
         use_sigmoid = kwargs.get('use_sigmoid', True)
         prior_threshold = kwargs.get('prior_threshold', 0.10)
@@ -125,6 +126,13 @@ def get_loss_criterion(name, ignore_index=None, reduction='mean', **kwargs):
         use_sigmoid = kwargs.get('use_sigmoid', True)
         prior_threshold = kwargs.get('prior_threshold', 0.10)
         return SizeConstrainedAsymmetricLoss(use_sigmoid=use_sigmoid, threshold=prior_threshold, reduction=reduction)
+    elif name == 'prior_norm':
+        use_sigmoid = kwargs.get('use_sigmoid', True)
+        prior_threshold = kwargs.get('prior_threshold', 0.01)
+        return SizeConstrainedNormLoss(use_sigmoid=use_sigmoid, threshold=prior_threshold, reduction=reduction)
+    elif name == 'prior_feature':
+        temperature = kwargs.get('temperature', 2.0)
+        return FeatureConstraine(temperature=temperature, eps=eps, **kwargs)
     else:
         activate = kwargs.get('activate', 'softmax')
         return MutiClassDiceLoss(class_weight=weight, ignore_index=ignore_index, normalization=activate,

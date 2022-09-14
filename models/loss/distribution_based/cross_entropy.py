@@ -47,7 +47,7 @@ class WBCEWithLogitLoss(nn.Module):
             valid_mask = torch.ones_like(target, dtype=torch.float32)
 
         if sample_weights is not None:
-            sample_weights = torch.Tensor(sample_weights)
+            sample_weights = torch.tensor(sample_weights)
             sample_weights = sample_weights.contiguous().view(batch_size, -1).float()
             valid_mask = sample_weights * valid_mask
 

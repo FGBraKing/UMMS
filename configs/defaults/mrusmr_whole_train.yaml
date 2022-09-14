@@ -2,8 +2,8 @@
 # ------------------------------------------------------------------------------------------------ #
 # modified
 # ------------------------------------------------------------------------------------------------ #
-name : 'mrusmr11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6'
-suffix : 'OrdinaryAug'
+name : 'mrusmr11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_2x40_0.6'
+suffix : 'AugPlus'
 
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
 # Tesla V100-DGXS-32GB\NVIDIA GeForce RTX 2080 Ti\NVIDIA GeForce GTX 1080 Ti\ NVIDIA TITAN Xp
@@ -12,12 +12,13 @@ fold : 4
 batch_size : 4
 
 gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
-visible_gpu : !!str "'4'"
+visible_gpu : !!str "'0'"
 DEBUG : False
 
-preprocess : 'elastic_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
-# 'elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
-# 'elastic_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+preprocess : 'elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+ # 'elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+ # 'elastic_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+
 init_channel_number : 16
 conv_order : 'cbl'
 
@@ -27,10 +28,10 @@ optimizer_name : 'adam'
 lr : 1e-4
 
 lr_policy : 'poly'
-lr_cycle_num : 3
+lr_cycle_num : 2
 lr_cycle_decay : 0.6
 
-num_epochs : 300
+num_epochs : 40
 decay_epochs : 10
 decay_rate : 0.5
 # 在poly学习率策略中，decay_rate作为power使用
@@ -59,7 +60,7 @@ crop_stride : [1, 1, 1]
 #elastic_sigma : [8., 12.]
 #scale: [1, 1, 1]
 #scale_range : [0.7, 1.3]
-rot_angle_spectrum: 30
+rot_angle_spectrum: 60
 rot_axes: [1, 2]
 mirror_axes: [0, 1, 2]
 #g_noise_variance: [0.0, 0.1]
@@ -116,7 +117,7 @@ lr_noise_pct : 0.67
 lr_noise_std : 1.
 
 warmup_lr : 1e-6
-warmup_epochs : 5
+warmup_epochs : 10
 warmup_prefix : True
 
 lr_cycle_mul : 1.0
@@ -151,7 +152,7 @@ dist_url : 'tcp://127.0.0.1:52001'
 # ---------------------------------------------------------------------------- #
 # --basic
 #name : 'mrusmr_unet3d_969632_bs12_ch32_kaiming_combo_1.0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
-dataset_name : 'mrusmr'
+dataset_name : 'mrusmrplus'
 # 'mrusmrplus'
 model_name : 'single'
 #seed : 1008
@@ -166,9 +167,9 @@ deterministic : True
 #suffix : ''
 verbose : true
 # --files path
-logs_dir : './traces/logs'
-results_dir : './traces/results'
-checkpoints_dir : './traces/checkpoints'
+logs_dir : './traces/logs/SingleBaseLine'
+results_dir : './traces/results/SingleBaseLine'
+checkpoints_dir : './traces/checkpoints/SingleBaseLine'
 optimizer_path : ~
 # --basic train
 #epoch_start : 1
@@ -184,7 +185,7 @@ save_by_iter : false
 display_freq : 12
 print_freq : 1
 plot_freq : 1
-val_epoch_freq : 1
+val_epoch_freq : 5
 test_on_train : true
 # --visualer
 with_tensorboard : False

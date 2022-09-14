@@ -62,9 +62,9 @@ def define_model(opt, device, domains=None):
     return net
 
 
-class TestDSBNHalf(TestGeneric):
+class TestDualStream(TestGeneric):
     def __init__(self, opt):
-        super(TestDSBNHalf, self).__init__(opt)
+        super(TestDualStream, self).__init__(opt)
         self.net_umms = define_model(opt, self.device, self.domains)
 
         self.print_networks(opt.verbose)

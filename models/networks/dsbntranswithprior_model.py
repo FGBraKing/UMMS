@@ -84,6 +84,7 @@ class DsbnTransWithPriorModel(BaseModel):
             self.criterionRoutineMulti = get_loss_criterion(name='custom_multimodal')
             self.criterionRegular = get_loss_criterion(name='custom_regular')
             # self.criterionPrior = get_loss_criterion(name='prior', prior_threshold=opt.prior_threshold)
+            # self.criterionPrior = get_loss_criterion(name='prior_norm', prior_threshold=opt.prior_threshold)
             self.criterionPrior = get_loss_criterion(name='prior_asymmetric', prior_threshold=opt.prior_threshold)
 
             optimizer_kwargs = {'eps': 1e-8,
@@ -169,8 +170,6 @@ class DsbnTransWithPriorModel(BaseModel):
 
         if self.opt.use_mixed_precision:
             self.scaler.scale(self.loss_total).backward()
-            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
-            self.scaler.update()
         else:
             self.loss_total.backward()
 
@@ -180,11 +179,18 @@ class DsbnTransWithPriorModel(BaseModel):
             errors_ret[domain + key] = item
         return errors_ret
 
+    def optimizer_step(self):
+        if self.opt.use_mixed_precision:
+            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
+            self.scaler.update()
+        else:
+            self.optimizer.step()
+
     def optimize_parameters(self, update=True):
         if update:
             self.forward()
             self.backward()
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
         else:
             with self.no_sync_context():

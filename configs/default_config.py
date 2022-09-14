@@ -60,6 +60,7 @@ _C.output_nc = None
 _C.init_channel_number = None
 _C.up_interpolate = None
 _C.conv_order = None
+_C.with_spp = None
 # initialization
 _C.init_type = 'kaiming'
 _C.init_gain = 1.4142135623730951

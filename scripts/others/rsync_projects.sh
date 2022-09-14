@@ -77,8 +77,8 @@ do
     eval "rsync -avP --update --delete-after --delete-excluded --exclude='.*' ${source_data_dir}  ${target_data_dir}"
     echo "synchronizing from ${source_project_dir}  to  ${target_project_dir}"
     # 完全同步、同步traces、同步代码
-#    eval "rsync -avP --update --delete-after --delete-excluded  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
-#    eval "rsync -avP --update  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
+    eval "rsync -avP --update --delete-after --delete-excluded  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
+    eval "rsync -avP --update  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
     eval "rsync -avP --update --delete-after --exclude='traces/*' --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
   fi
 done

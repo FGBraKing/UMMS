@@ -133,17 +133,17 @@ def plot_3d(image, threshold=-300):
 
 if __name__ == "__main__":
 
-    result_dir = r'/home/lf/data_fong/CODE/PycharmProject/DLForPytorch/traces/results'
-    exp_name = r'mrusmr_unet3dV1_969632_bs6_ch32_kaiming_combo_1.0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
-    phase_name = r'mrval'
-    process_name = r'crop969632_slide24248_nopad_noaug'
-    data_name = r'579_neP069_MR_image.h5'
+    result_dir = r'/home/lf/data_fong/PROJECT/UMMS/traces/results/DSBNFuseWithDeepSupervised'
+    exp_name = r'mrus11211280_fold1_bs4_dsbnfusewithdeepsupervised_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_deepsupervised1_Norm_prior_gamma100_threshold2_pow2_soft_amp_2080Ti'
+    phase_name = r'test'
+    process_name = r'centercrop_postprocess'
+    data_name = r'latestP077_mr_volume.h5'
 
     d_path = os.path.join(result_dir, exp_name, phase_name, process_name, data_name)
-    # # 'origin_volume', 'segment', 'label'
-    # 'label', 'origin_volume', 'segment'
+    # 'origin_volume', 'segment', 'label'
+    # 'source_label', 'source_predict', 'source_volume', 'target_label', 'target_predict', 'target_volume'
     # it seems that label is the predicted
-    show_data_in_h5(d_path, 'origin_volume', 'segment', 'label', interval=2)
+    show_data_in_h5(d_path, 'source_volume', 'source_predict', 'source_label', interval=2)
     # print_numpy(volume,shp=True, percentile=True)
     # shape, (175, 224, 224)
     # mean = -0.000, min = -0.904, max = 3.678, median = -0.506, std=1.000

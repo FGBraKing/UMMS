@@ -162,8 +162,6 @@ class DsbnHalfModel(BaseModel):
 
         if self.opt.use_mixed_precision:
             self.scaler.scale(self.loss_total).backward()
-            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
-            self.scaler.update()
         else:
             self.loss_total.backward()
 
@@ -183,8 +181,6 @@ class DsbnHalfModel(BaseModel):
 
         if self.opt.use_mixed_precision:
             self.scaler.scale(self.loss_total).backward()
-            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
-            self.scaler.update()
         else:
             self.loss_total.backward()
 
@@ -193,6 +189,13 @@ class DsbnHalfModel(BaseModel):
         for key, item in self.loss_item_dict.items():
             errors_ret[domain+key] = item
         return errors_ret
+
+    def optimizer_step(self):
+        if self.opt.use_mixed_precision:
+            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
+            self.scaler.update()
+        else:
+            self.optimizer.step()
 
     def optimize_parameters(self, update=True):
         if self.opt.optimize_respective:
@@ -204,7 +207,7 @@ class DsbnHalfModel(BaseModel):
         if update:
             self.forward()
             self.backward()
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
         else:
             with self.no_sync_context():
@@ -216,12 +219,12 @@ class DsbnHalfModel(BaseModel):
             self.forward_one("source")
             self.backward_one("source")
             source_loss_dict = self.record_loss_item("source")
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
             self.forward_one("target")
             self.backward_one("target")
             target_loss_dict = self.record_loss_item("target")
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
             self.loss_item_dict = {**source_loss_dict, **target_loss_dict}
         else:

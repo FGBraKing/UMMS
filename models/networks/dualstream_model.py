@@ -208,8 +208,6 @@ class DualStreamModel(BaseModel):
 
         if self.opt.use_mixed_precision:
             self.scaler.scale(self.loss_total).backward()
-            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
-            self.scaler.update()
         else:
             self.loss_total.backward()
 
@@ -219,6 +217,13 @@ class DualStreamModel(BaseModel):
             errors_ret[domain+key] = item
         return errors_ret
 
+    def optimizer_step(self):
+        if self.opt.use_mixed_precision:
+            self.scaler.step(self.optimizer)  # maybe apply to all optimizers
+            self.scaler.update()
+        else:
+            self.optimizer.step()
+
     # 更新方式有两种：1.先更新一个模态参数，再更新另一个模态参数 2.同时更新全部参数. 这里使用第1种方式
     def optimize_parameters(self, update=True):
         source_loss_dict = {}
@@ -227,14 +232,14 @@ class DualStreamModel(BaseModel):
             self.forward_one("source")
             self.backward(self.source_predict, self.source_label)
             source_loss_dict = self.record_loss_item("source")
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
             # with torch.no_grad():
             #     self.forward_one("target")
             self.forward_one("target")
             self.backward(self.target_predict, self.target_label)
             target_loss_dict = self.record_loss_item("target")
-            self.optimizer.step()
+            self.optimizer_step()
             self.optimizer.zero_grad()
             self.loss_item_dict = {**source_loss_dict, **target_loss_dict}
 
