@@ -22,7 +22,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
         return [
             {
                 'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
-                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi')),
+                'dismap': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'dm'))
             }
             for p_id in pat_ids
         ]
@@ -66,110 +67,111 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
     mr_paths = [
         {
             'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi'))
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'roi')),
+            'dismap': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'mr', 'dm'))
         }
         for p_id in used_ids
     ]
     return mr_paths
 
 
-class MrusmrPlusDataset(NIIDataset):
-    axis_database = (
-        (0,),
-        ((0,), (1,), (1, 2)),
-        ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2), (0, 1, 2)),
-    )
-
-    def __init__(self, opt):
-        super(MrusmrPlusDataset, self).__init__(opt)
-        self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
-
-        self.mirror_axes = self.get_mirror_axis(opt.mirror_axes)
-        self.mirror_num = len(self.mirror_axes) + 1             # self.mirror_num = 8
-        self.rotate_axes = self.get_rot_axis(opt.rot_axes)
-        self.rotate_num = len(self.rotate_axes) * 4             # self.rotate_num = 4
-
-        self.true_size = len(self.paths)
-        # 顺序是path、mirror、rotate
-        self.data_size = self.true_size*self.mirror_num*self.rotate_num
-
-        self.pre_transform = get_pre_transform(opt)
-        self.transform = get_transform(opt)
-        self.post_transform = get_post_transform(opt)
-        self.to_tensor = ToTensor(expand_dims=True)
-
-    @staticmethod
-    def get_mirror_axis(axes):
-        length = len(axes)
-        all_result = []
-        for i in range(length):
-            all_result += list(combinations(axes, i+1))
-        return tuple(all_result)
-
-    @staticmethod
-    def get_rot_axis(axes):
-        return tuple(combinations(axes, 2))
-
-    def get_rot_data(self, data, index):
-        index = index % (self.mirror_num*self.rotate_num)
-        index = index % self.rotate_num
-        axis_num = index // 4
-        index = index % 4
-        rot_num = index // 1
-        data = np.rot90(data, rot_num, axes=self.rotate_axes[axis_num])
-        return data
-
-    def get_mirror_data(self, data, index):
-        index = index % (self.mirror_num*self.rotate_num)
-        index = index // self.rotate_num
-        # ndim = len(data.shape)
-        if index == 0:
-            return data
-        else:
-            # return np.flip(data, MrusmrPlusDataset.axis_database[ndim-1][index])
-            return np.flip(data, self.mirror_axes[index-1])
-
-    def get_data_index(self, index):
-        return index // (self.mirror_num*self.rotate_num)
-
-    def get_augmentation(self, data, seg, index):
-        data = self.get_mirror_data(data, index)
-        data = self.get_rot_data(data, index)
-
-        seg = self.get_mirror_data(seg, index)
-        seg = self.get_rot_data(seg, index)
-        return data, seg
-
-    def __getitem__(self, index):
-        index_used = self._get_used_index(index)
-
-        data_index = self.get_data_index(index_used)
-
-        volume_path = self.paths[data_index]['volume']
-        label_path = self.paths[data_index]['label']
-
-        spacing = sitk.ReadImage(volume_path).GetSpacing()
-
-        volume = self.loader(volume_path)  # DHW, zyx
-        label = self.loader(label_path)
-
-        volume, label = self.get_augmentation(volume, label, index_used)
-
-        # 进行形状变换前的对volume进行的一些特殊处理,目前为空
-        volume = self._apply_pre_transform(volume)
-        # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
-        volume, label = self._apply_transform(volume, label)
-        # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
-        volume = self._apply_post_transform(volume)
-
-        # volume, label = crop(volume, label, self.opt.crop_size[::-1], crop_type='center')
-
-        volume = self.to_tensor(volume)  # NCDHW
-        label = self.to_tensor(label)
-        spacing = torch.Tensor(spacing[::-1])
-
-        return {'volume': volume, 'label': label,
-                'volume_path': volume_path, 'label_path': label_path, 'spacing': spacing}
+# class MrusmrPlusDataset(NIIDataset):
+#     axis_database = (
+#         (0,),
+#         ((0,), (1,), (1, 2)),
+#         ((0,), (1,), (2,), (0, 1), (0, 2), (1, 2), (0, 1, 2)),
+#     )
+#
+#     def __init__(self, opt):
+#         super(MrusmrPlusDataset, self).__init__(opt)
+#         self.paths = get_data_path(opt.dataroot, opt.phase, opt.fold)
+#
+#         self.mirror_axes = self.get_mirror_axis(opt.mirror_axes)
+#         self.mirror_num = len(self.mirror_axes) + 1             # self.mirror_num = 8
+#         self.rotate_axes = self.get_rot_axis(opt.rot_axes)
+#         self.rotate_num = len(self.rotate_axes) * 4             # self.rotate_num = 4
+#
+#         self.true_size = len(self.paths)
+#         # 顺序是path、mirror、rotate
+#         self.data_size = self.true_size*self.mirror_num*self.rotate_num
+#
+#         self.pre_transform = get_pre_transform(opt)
+#         self.transform = get_transform(opt)
+#         self.post_transform = get_post_transform(opt)
+#         self.to_tensor = ToTensor(expand_dims=True)
+#
+#     @staticmethod
+#     def get_mirror_axis(axes):
+#         length = len(axes)
+#         all_result = []
+#         for i in range(length):
+#             all_result += list(combinations(axes, i+1))
+#         return tuple(all_result)
+#
+#     @staticmethod
+#     def get_rot_axis(axes):
+#         return tuple(combinations(axes, 2))
+#
+#     def get_rot_data(self, data, index):
+#         index = index % (self.mirror_num*self.rotate_num)
+#         index = index % self.rotate_num
+#         axis_num = index // 4
+#         index = index % 4
+#         rot_num = index // 1
+#         data = np.rot90(data, rot_num, axes=self.rotate_axes[axis_num])
+#         return data
+#
+#     def get_mirror_data(self, data, index):
+#         index = index % (self.mirror_num*self.rotate_num)
+#         index = index // self.rotate_num
+#         # ndim = len(data.shape)
+#         if index == 0:
+#             return data
+#         else:
+#             # return np.flip(data, MrusmrPlusDataset.axis_database[ndim-1][index])
+#             return np.flip(data, self.mirror_axes[index-1])
+#
+#     def get_data_index(self, index):
+#         return index // (self.mirror_num*self.rotate_num)
+#
+#     def get_augmentation(self, data, seg, index):
+#         data = self.get_mirror_data(data, index)
+#         data = self.get_rot_data(data, index)
+#
+#         seg = self.get_mirror_data(seg, index)
+#         seg = self.get_rot_data(seg, index)
+#         return data, seg
+#
+#     def __getitem__(self, index):
+#         index_used = self._get_used_index(index)
+#
+#         data_index = self.get_data_index(index_used)
+#
+#         volume_path = self.paths[data_index]['volume']
+#         label_path = self.paths[data_index]['label']
+#
+#         spacing = sitk.ReadImage(volume_path).GetSpacing()
+#
+#         volume = self.loader(volume_path)  # DHW, zyx
+#         label = self.loader(label_path)
+#
+#         volume, label = self.get_augmentation(volume, label, index_used)
+#
+#         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
+#         volume = self._apply_pre_transform(volume)
+#         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
+#         volume, label = self._apply_transform(volume, label)
+#         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
+#         volume = self._apply_post_transform(volume)
+#
+#         # volume, label = crop(volume, label, self.opt.crop_size[::-1], crop_type='center')
+#
+#         volume = self.to_tensor(volume)  # NCDHW
+#         label = self.to_tensor(label)
+#         spacing = torch.Tensor(spacing[::-1])
+#
+#         return {'volume': volume, 'label': label,
+#                 'volume_path': volume_path, 'label_path': label_path, 'spacing': spacing}
 
 
 class MrusmrDataset(NIIDataset):
@@ -189,26 +191,35 @@ class MrusmrDataset(NIIDataset):
 
         volume_path = self.paths[index_used]['volume']
         label_path = self.paths[index_used]['label']
+        dismap_path = self.paths[index_used]['dismap']
 
         spacing = sitk.ReadImage(volume_path).GetSpacing()
 
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
+
+        origin_shape = label.shape
+
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         volume = self._apply_pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
-        volume, label = self._apply_transform(volume, label)
+        volume, label, dismap = self._apply_transform(volume, label, dismap)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         volume = self._apply_post_transform(volume)
 
         # volume, label = crop(volume, label, self.opt.crop_size[::-1], crop_type='center')
+        now_shape = label.shape
 
         volume = self.to_tensor(volume)     # NCDHW
         label = self.to_tensor(label)
+        dismap = self.to_tensor(dismap)
         spacing = torch.Tensor(spacing[::-1])
 
-        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
-                'spacing': spacing}
+        return {'volume': volume, 'label': label, 'dismap': dismap,
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path,
+                'origin_shape': origin_shape, 'now_shape': now_shape, 'spacing': spacing
+                }
 
     def custom_debug(self, *args, **kwargs):
         print(f'data_size:{self.data_size}')
@@ -239,11 +250,13 @@ class TestMrusmrDataset(BaseDataset):
     def __getitem__(self, index):
         volume_path = self.paths[index]['volume']
         label_path = self.paths[index]['label']
+        dismap_path = self.paths[index]['dismap']
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
         spacing = sitk.ReadImage(volume_path).GetSpacing()
-        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
-                'spacing': tuple(spacing[::-1])}
+        return {'volume': volume, 'label': label, 'dismap': dismap, 'spacing': tuple(spacing[::-1]),
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path}
 
     def __len__(self):
         return self.data_size
@@ -267,11 +280,13 @@ class PredictMrusmrDataset(BaseDataset):
     def __getitem__(self, index):
         volume_path = self.paths[index]['volume']
         label_path = self.paths[index]['label']
+        dismap_path = self.paths[index]['dismap']
 
         spacing = sitk.ReadImage(volume_path).GetSpacing()
 
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
         origin_shape = label.shape
 
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
@@ -279,7 +294,7 @@ class PredictMrusmrDataset(BaseDataset):
             volume = self.pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
         if self.transform:
-            volume, label = self.transform(volume, label)
+            volume, label, dismap = self.transform(volume, label, dismap)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         if self.post_transform:
             volume = self.post_transform(volume)
@@ -290,7 +305,8 @@ class PredictMrusmrDataset(BaseDataset):
         label = self.to_tensor(label)
         spacing = torch.Tensor(spacing[::-1])
 
-        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
+        return {'volume': volume, 'label': label, 'dismap': dismap,
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path,
                 'origin_shape': origin_shape, 'now_shape': now_shape, 'spacing': spacing}
 
     def __len__(self):
@@ -298,9 +314,9 @@ class PredictMrusmrDataset(BaseDataset):
         return self.data_size
 
 
-TestMrusmrPlusDataset = TestMrusmrDataset
+# TestMrusmrPlusDataset = TestMrusmrDataset
 
-PredictMrusmrPlusDataset = PredictMrusmrDataset
+# PredictMrusmrPlusDataset = PredictMrusmrDataset
 
 
 def main():

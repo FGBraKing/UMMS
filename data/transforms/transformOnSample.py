@@ -12,7 +12,7 @@ from skimage.segmentation import find_boundaries
 
 from batchgenerators.augmentations.spatial_transformations import augment_spatial, augment_spatial_2, \
     augment_mirroring, augment_transpose_axes, augment_zoom, augment_resize, augment_rot90
-from batchgenerators.augmentations.utils import interpolate_img
+from batchgenerators.augmentations.utils import interpolate_img, resize_multichannel_image
 from batchgenerators.augmentations.crop_and_pad_augmentations import pad_nd_image_and_seg, crop
 from batchgenerators.transforms.spatial_transforms import augment_spatial
 
@@ -36,7 +36,7 @@ class ZoomTransform:
         self.zoom_factors = zoom_factors
         self.with_channel = with_channel
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
         '''
         :param data: c,d,h,w OR d,h,w
         :param seg:
@@ -47,17 +47,22 @@ class ZoomTransform:
         if self.with_channel:
             data, seg = augment_zoom(data, seg, self.zoom_factors, self.order, self.order_seg)
             # , self.cval_seg
+            if dismap is not None:
+                dismap, _ = augment_zoom(dismap, None, self.zoom_factors, self.order)
         else:
             data = np.expand_dims(data, axis=0)
             seg = np.expand_dims(seg, axis=0) if seg is not None else seg
+            dismap = np.expand_dims(dismap, axis=0) if dismap is not None else dismap
 
             data, seg = augment_zoom(data, seg, self.zoom_factors, self.order, self.order_seg)
             # , self.cval_seg
+            dismap, _ = augment_zoom(dismap, None, self.zoom_factors, self.order)
 
             data = np.squeeze(data, axis=0)
             seg = np.squeeze(seg, axis=0) if seg is not None else seg
+            dismap = np.squeeze(dismap, axis=0) if dismap is not None else dismap
 
-        return data, seg
+        return data, seg, dismap
 
 
 class Rot90Transform:
@@ -74,21 +79,36 @@ class Rot90Transform:
         self.num_rot = num_rot
         self.with_channel = with_channel
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    @staticmethod
+    def augment_rot90(sample_data, sample_seg, sample_dismap, num_rot=(1, 2, 3), axes=(0, 1, 2)):
+        num_rot = np.random.choice(num_rot)
+        axes = np.random.choice(axes, size=2, replace=False)
+        axes.sort()
+        axes = [i + 1 for i in axes]
+        sample_data = np.rot90(sample_data, num_rot, axes)
+        if sample_seg is not None:
+            sample_seg = np.rot90(sample_seg, num_rot, axes)
+        if sample_dismap is not None:
+            sample_dismap = np.rot90(sample_dismap, num_rot, axes)
+        return sample_data, sample_seg, sample_dismap
+
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
 
         if np.random.uniform() < self.p_per_sample:
             if self.with_channel:
-                data, seg = augment_rot90(data, seg, self.num_rot, self.axes)
+                data, seg, dismap = self.augment_rot90(data, seg, dismap, self.num_rot, self.axes)
             else:
                 data = np.expand_dims(data, axis=0)
                 seg = np.expand_dims(seg, axis=0) if seg is not None else seg
+                dismap = np.expand_dims(dismap, axis=0) if dismap is not None else dismap
 
-                data, seg = augment_rot90(data, seg, self.num_rot, self.axes)
+                data, seg, dismap = augment_rot90(data, seg, dismap, self.num_rot, self.axes)
 
                 data = np.squeeze(data, axis=0)
                 seg = np.squeeze(seg, axis=0) if seg is not None else seg
+                dismap = np.squeeze(dismap, axis=0) if dismap is not None else dismap
 
-        return data, seg
+        return data, seg, dismap
 
 
 class ResizeTransform:
@@ -110,10 +130,12 @@ class ResizeTransform:
         self.target_size = target_size
         self.with_channel = with_channel
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
 
         if self.with_channel:
             data, seg = augment_resize(data, seg, self.target_size, self.order, self.order_seg)
+
+            dismap = resize_multichannel_image(dismap, self.target_size, self.order)
             # , self.cval_seg
         else:
             data = np.expand_dims(data, axis=0)
@@ -121,10 +143,11 @@ class ResizeTransform:
 
             data, seg = augment_resize(data, seg, self.target_size, self.order, self.order_seg)
             # , self.cval_seg
+            dismap = resize(dismap.astype(float), self.target_size, self.order, mode="edge", clip=True, anti_aliasing=False)
 
             data = np.squeeze(data, axis=0)
             seg = np.squeeze(seg, axis=0) if seg is not None else seg
-        return data, seg
+        return data, seg, dismap
 
 
 class MirrorTransform:
@@ -145,21 +168,50 @@ class MirrorTransform:
                              "axes=(2, 3, 4) to mirror along all spatial dimensions of a 5d tensor (b, c, x, y, z) "
                              "is now axes=(0, 1, 2). Please adapt your scripts accordingly.")
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    @staticmethod
+    def augment_mirroring(sample_data, sample_seg=None, sample_dismap=None, axes=(0, 1, 2)):
+        if (len(sample_data.shape) != 3) and (len(sample_data.shape) != 4):
+            raise Exception(
+                "Invalid dimension for sample_data and sample_seg. sample_data and sample_seg should be either "
+                "[channels, x, y] or [channels, x, y, z]")
+        if 0 in axes and np.random.uniform() < 0.5:
+            sample_data[:, :] = sample_data[:, ::-1]
+            if sample_seg is not None:
+                sample_seg[:, :] = sample_seg[:, ::-1]
+            if sample_dismap is not None:
+                sample_dismap[:, :] = sample_dismap[:, ::-1]
+        if 1 in axes and np.random.uniform() < 0.5:
+            sample_data[:, :, :] = sample_data[:, :, ::-1]
+            if sample_seg is not None:
+                sample_seg[:, :, :] = sample_seg[:, :, ::-1]
+            if sample_dismap is not None:
+                sample_dismap[:, :, :] = sample_dismap[:, :, ::-1]
+        if 2 in axes and len(sample_data.shape) == 4:
+            if np.random.uniform() < 0.5:
+                sample_data[:, :, :, :] = sample_data[:, :, :, ::-1]
+                if sample_seg is not None:
+                    sample_seg[:, :, :, :] = sample_seg[:, :, :, ::-1]
+                if sample_dismap is not None:
+                    sample_dismap[:, :, :, :] = sample_dismap[:, :, :, ::-1]
+        return sample_data, sample_seg, sample_dismap
+
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
 
         if np.random.uniform() < self.p_per_sample:
 
             if self.with_channel:
-                data, seg = augment_mirroring(data, seg, axes=self.axes)
+                data, seg, dismap = self.augment_mirroring(data, seg, dismap, axes=self.axes)
             else:
                 data = np.expand_dims(data, axis=0)
                 seg = np.expand_dims(seg, axis=0) if seg is not None else seg
+                dismap = np.expand_dims(dismap, axis=0) if dismap is not None else dismap
 
-                data, seg = augment_mirroring(data, seg, axes=self.axes)
+                data, seg, dismap = self.augment_mirroring(data, seg, dismap, axes=self.axes)
 
                 data = np.squeeze(data, axis=0)
                 seg = np.squeeze(seg, axis=0) if seg is not None else seg
-        return data, seg
+                dismap = np.squeeze(dismap, axis=0) if dismap is not None else dismap
+        return data, seg, dismap
 
 
 class SpatialTransform:
@@ -422,21 +474,45 @@ class TransposeAxesTransform:
             transpose_any_of_these) >= 2, "len(transpose_any_of_these) must be >=2 -> we need at least 2 axes we " \
                                           "can transpose"
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    @staticmethod
+    def augment_transpose_axes(data_sample, seg_sample, dismap_sample, axes=(0, 1, 2)):
+        axes = list(np.array(axes) + 1)  # need list to allow shuffle; +1 to accomodate for color channel
+
+        assert np.max(axes) <= len(data_sample.shape), "axes must only contain valid axis ids"
+        static_axes = list(range(len(data_sample.shape)))
+        for i in axes: static_axes[i] = -1
+        np.random.shuffle(axes)
+
+        ctr = 0
+        for j, i in enumerate(static_axes):
+            if i == -1:
+                static_axes[j] = axes[ctr]
+                ctr += 1
+
+        data_sample = data_sample.transpose(*static_axes)
+        if seg_sample is not None:
+            seg_sample = seg_sample.transpose(*static_axes)
+        if dismap_sample is not None:
+            dismap_sample = dismap_sample.transpose(*static_axes)
+        return data_sample, seg_sample, dismap_sample
+
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
 
         if np.random.uniform() < self.p_per_sample:
             if self.with_channel:
-                data, seg = augment_transpose_axes(data, seg, self.transpose_any_of_these)
+                data, seg, dismap = self.augment_transpose_axes(data, seg, dismap, self.transpose_any_of_these)
             else:
                 data = np.expand_dims(data, axis=0)
                 seg = np.expand_dims(seg, axis=0) if seg is not None else seg
+                dismap = np.expand_dims(dismap, axis=0) if dismap is not None else dismap
 
-                data, seg = augment_transpose_axes(data, seg, self.transpose_any_of_these)
+                data, seg, dismap = self.augment_transpose_axes(data, seg, dismap, self.transpose_any_of_these)
 
                 data = np.squeeze(data, axis=0)
                 seg = np.squeeze(seg, axis=0) if seg is not None else seg
+                dismap = np.squeeze(dismap, axis=0) if dismap is not None else dismap
 
-        return data, seg
+        return data, seg, dismap
 
 
 class RandomRotateTransform:
@@ -451,7 +527,7 @@ class RandomRotateTransform:
 
         self.with_channel = with_channel
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
         if self.with_channel:  # CDHW OR CHW
             assert data.ndim in {3, 4}, "data have to be CDHW OR DHW"
             if data.ndim == 4:
@@ -484,8 +560,10 @@ class RandomRotateTransform:
                     data = rotate(data, angle, axes=i_axes, reshape=True, order=3, mode='constant', cval=0.0, prefilter=True)
                     if seg is not None:
                         seg = rotate(seg, angle, axes=i_axes, reshape=True, order=0, mode='constant', cval=0.0, prefilter=False)
+                    if dismap is not None:
+                        dismap = rotate(dismap, angle, axes=i_axes, reshape=True, order=3, mode='edge')
 
-        return data, seg
+        return data, seg, dismap
 
 
 class ElasticDeformTransform:
@@ -508,7 +586,7 @@ class ElasticDeformTransform:
         self.p_el_per_sample = p_el_per_sample
         self.with_channel = with_channel
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
 
         if self.with_channel:
             shape = data.shape[1:]
@@ -517,6 +595,7 @@ class ElasticDeformTransform:
 
         data_result = data  # np.zeros_like(data, dtype=np.float32)
         seg_result = seg
+        dismap_result = dismap
 
         if self.random_state.uniform() < self.p_el_per_sample:
             tmp = tuple([np.arange(i) for i in shape])
@@ -533,6 +612,10 @@ class ElasticDeformTransform:
                 for channel_id in range(len(data)):
                     data_result[channel_id, ...] = interpolate_img(data[channel_id], indices, self.order_data,
                                                                    mode='nearest', cval=0)
+                    if dismap is not None:
+                        dismap_result[channel_id, ...] = interpolate_img(dismap[channel_id], indices, self.order_data,
+                                                                         mode='nearest', cval=0)
+
                 if seg is not None:
                     seg_result = np.zeros_like(seg, dtype=np.float32)
                     for channel_id in range(len(seg)):
@@ -542,7 +625,9 @@ class ElasticDeformTransform:
                 data_result = interpolate_img(data, indices, self.order_data, mode='nearest', cval=0)
                 if seg is not None:
                     seg_result = interpolate_img(seg, indices, self.order_seg, mode='constant', cval=0, is_seg=True)
-        return data_result, seg_result
+                if dismap is not None:
+                    dismap_result = interpolate_img(dismap, indices, self.order_data, mode='nearest', cval=0)
+        return data_result, seg_result, dismap_result
 
 
 class RandomScaleTransform:
@@ -564,7 +649,7 @@ class RandomScaleTransform:
             assert len(scale) == 2, 'You should give a range'
             self.scale = scale
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
         if self.with_channel:
             ndim = len(data.shape) - 1
         else:
@@ -587,6 +672,9 @@ class RandomScaleTransform:
 
             if self.with_channel:
                 data, seg = augment_zoom(data, seg, sc, self.order_data, self.order_seg)
+                if dismap is not None:
+                    dismap, _ = augment_zoom(dismap, None, sc, self.order_data)
+
                 # , self.cval_seg
             else:
                 data = np.expand_dims(data, axis=0)
@@ -598,7 +686,12 @@ class RandomScaleTransform:
                 data = np.squeeze(data, axis=0)
                 seg = np.squeeze(seg, axis=0) if seg is not None else seg
 
-        return data, seg
+                if dismap is not None:
+                    dismap = np.expand_dims(dismap, axis=0)
+                    dismap, _ = augment_zoom(dismap, None, sc, self.order_data)
+                    dismap = np.squeeze(dismap, axis=0)
+
+        return data, seg, dismap
 
 
 class CenterCropTransform:
@@ -606,7 +699,7 @@ class CenterCropTransform:
         self.crop_size = crop_size
         self.with_channel = with_channel
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
         if self.with_channel:
             data = np.expand_dims(data, axis=0)
             seg = np.expand_dims(seg, axis=0) if seg is not None else seg
@@ -615,6 +708,10 @@ class CenterCropTransform:
 
             data = np.squeeze(data, axis=0)
             seg = np.squeeze(seg, axis=0) if seg is not None else seg
+            if dismap is not None:
+                dismap = np.expand_dims(dismap, axis=0)
+                dismap, _ = crop(dismap, None, self.crop_size, 0, 'center')
+                dismap = np.squeeze(dismap, axis=0)
         else:
             data = np.expand_dims(data, axis=(0, 1))
             seg = np.expand_dims(seg, axis=(0, 1)) if seg is not None else seg
@@ -623,8 +720,12 @@ class CenterCropTransform:
 
             data = np.squeeze(data, axis=(0, 1))
             seg = np.squeeze(seg, axis=(0, 1)) if seg is not None else seg
+            if dismap is not None:
+                dismap = np.expand_dims(dismap, axis=(0, 1))
+                dismap, _ = crop(dismap, None, self.crop_size, 0, 'center')
+                dismap = np.squeeze(dismap, axis=(0, 1))
 
-        return data, seg
+        return data, seg, dismap
 
 
 class RandomCropTransform:
@@ -633,25 +734,82 @@ class RandomCropTransform:
         self.margins = margins
         self.with_channel = with_channel
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    @staticmethod
+    def get_lbs_for_random_crop(crop_size, data_shape, margins):
+        lbs = []
+        for i in range(len(data_shape) - 2):
+            if data_shape[i + 2] - crop_size[i] - margins[i] > margins[i]:
+                lbs.append(np.random.randint(margins[i], data_shape[i + 2] - crop_size[i] - margins[i]))
+            else:
+                lbs.append((data_shape[i + 2] - crop_size[i]) // 2)
+        return lbs
+
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
+        assert isinstance(data, np.ndarray), "data has to be a numpy array"
+
+        data_shape = data.shape
+
+        if seg is not None:
+            assert isinstance(seg, np.ndarray), "seg has to be a numpy array"
+            seg_shape = seg.shape
+            assert data_shape == seg_shape,  "data and seg must have the same spatial dimensions. " \
+                                             "Data: %s, seg: %s" % (str(data_shape), str(seg_shape))
+
+        if dismap is not None:
+            assert isinstance(dismap, np.ndarray), "seg has to be a numpy array"
+            dismap_shape = dismap.shape
+            assert data_shape == dismap_shape,  "data and dismap must have the same spatial dimensions. " \
+                                                "Data: %s, seg: %s" % (str(data_shape), str(dismap_shape))
+
         if self.with_channel:
-            data = np.expand_dims(data, axis=0)
-            seg = np.expand_dims(seg, axis=0) if seg is not None else seg
-
-            data, seg = crop(data, seg, self.crop_size, self.margins, 'random')
-
-            data = np.squeeze(data, axis=0)
-            seg = np.squeeze(seg, axis=0) if seg is not None else seg
+            crop_data_dim = len(data_shape) - 1
+            crop_data_shape = data_shape[1:]
         else:
-            data = np.expand_dims(data, axis=(0, 1))
-            seg = np.expand_dims(seg, axis=(0, 1)) if seg is not None else seg
+            crop_data_dim = len(data_shape)
+            crop_data_shape = data_shape
 
-            data, seg = crop(data, seg, self.crop_size, self.margins, 'random')
+        if type(self.crop_size) not in (tuple, list, np.ndarray):
+            self.crop_size = [self.crop_size] * crop_data_dim
+        else:
+            assert len(self.crop_size) == crop_data_dim, "If you provide a list/tuple as center crop make sure " \
+                                                         "it has the same dimension as your data (2d/3d)"
+        if not isinstance(self.margins, (np.ndarray, tuple, list)):
+            self.margins = [self.margins] * crop_data_dim
+        else:
+            assert len(self.margins) == crop_data_dim, "If you provide a list/tuple as margins make sure " \
+                                                       "it has the same dimension as your data (2d/3d)"
 
-            data = np.squeeze(data, axis=(0, 1))
-            seg = np.squeeze(seg, axis=(0, 1)) if seg is not None else seg
+        lbs = self.get_lbs_for_random_crop(self.crop_size, crop_data_shape, self.margins)
+        need_to_pad = [[abs(min(0, lbs[d])), abs(min(0, crop_data_shape[d] - (lbs[d] + self.crop_size[d])))]
+                       for d in range(crop_data_dim)]
+        ubs = [min(lbs[d] + self.crop_size[d], crop_data_shape[d]) for d in range(crop_data_dim)]
+        lbs = [max(0, lbs[d]) for d in range(crop_data_dim)]
 
-        return data, seg
+        if self.with_channel:
+            slicer_data = [slice(0, data_shape[1])] + [slice(lbs[d], ubs[d]) for d in range(crop_data_dim)]
+        else:
+            slicer_data = [slice(lbs[d], ubs[d]) for d in range(crop_data_dim)]
+
+        pad_mode = 'constant'
+        pad_kwargs = {'constant_values': 0}
+        pad_mode_seg = 'constant'
+        pad_kwargs_seg = {'constant_values': 0}
+
+        data = data[tuple(slicer_data)]
+        if any([i > 0 for j in need_to_pad for i in j]):
+            data = np.pad(data, need_to_pad, pad_mode, **pad_kwargs)
+
+        if seg is not None:
+            seg = seg[tuple(slicer_data)]
+            if any([i > 0 for j in need_to_pad for i in j]):
+                seg = np.pad(seg, need_to_pad, pad_mode_seg, **pad_kwargs_seg)
+
+        if dismap is not None:
+            dismap = dismap[tuple(slicer_data)]
+            if any([i > 0 for j in need_to_pad for i in j]):
+                dismap = np.pad(dismap, need_to_pad, mode='edge')
+
+        return data, seg, dismap
 
 
 class RandomCropWithStrideTransform:
@@ -672,7 +830,7 @@ class RandomCropWithStrideTransform:
                 lbs.append((data_shape[i] - crop_size[i]) // 2)
         return lbs
 
-    def __call__(self, data, seg=None, *args, **kwargs):
+    def __call__(self, data, seg=None, dismap=None, *args, **kwargs):
         assert isinstance(data, np.ndarray), "data has to be a numpy array"
 
         data_shape = data.shape
@@ -682,6 +840,12 @@ class RandomCropWithStrideTransform:
             seg_shape = seg.shape
             assert data_shape == seg_shape,  "data and seg must have the same spatial dimensions. " \
                                              "Data: %s, seg: %s" % (str(data_shape), str(seg_shape))
+
+        if dismap is not None:
+            assert isinstance(dismap, np.ndarray), "seg has to be a numpy array"
+            dismap_shape = dismap.shape
+            assert data_shape == dismap_shape,  "data and dismap must have the same spatial dimensions. " \
+                                                "Data: %s, seg: %s" % (str(data_shape), str(dismap_shape))
 
         if self.with_channel:
             crop_data_dim = len(data_shape) - 1
@@ -727,7 +891,12 @@ class RandomCropWithStrideTransform:
             seg = seg[tuple(slicer_data)]
             if any([i > 0 for j in need_to_pad for i in j]):
                 seg = np.pad(seg, need_to_pad, pad_mode_seg, **pad_kwargs_seg)
-        return data, seg
+
+        if dismap is not None:
+            dismap = dismap[tuple(slicer_data)]
+            if any([i > 0 for j in need_to_pad for i in j]):
+                dismap = np.pad(dismap, need_to_pad, mode='edge')
+        return data, seg, dismap
 
 
 class RandomShiftTransform:
