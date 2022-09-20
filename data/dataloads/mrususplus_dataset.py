@@ -22,7 +22,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
         return [
             {
                 'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi')),
+                'dismap': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'dm'))
             }
             for p_id in pat_ids
         ]
@@ -66,7 +67,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
     data_paths = [
         {
             'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi')),
+            'dismap': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'dm'))
         }
         for p_id in used_ids
     ]
@@ -130,13 +132,13 @@ class MrususPlusDataset(NIIDataset):
     def get_data_index(self, index):
         return index // (self.mirror_num*self.rotate_num)
 
-    def get_augmentation(self, data, seg, index):
-        data = self.get_mirror_data(data, index)
-        data = self.get_rot_data(data, index)
-
-        seg = self.get_mirror_data(seg, index)
-        seg = self.get_rot_data(seg, index)
-        return data, seg
+    def get_augmentation(self, index, *datas):
+        data_list = []
+        for data in datas:
+            data = self.get_mirror_data(data, index)
+            data = self.get_rot_data(data, index)
+            data_list.append(data)
+        return data_list
 
     def __getitem__(self, index):
         index_used = self._get_used_index(index)
@@ -145,18 +147,21 @@ class MrususPlusDataset(NIIDataset):
 
         volume_path = self.paths[data_index]['volume']
         label_path = self.paths[data_index]['label']
+        dismap_path = self.paths[data_index]['dismap']
 
         spacing = sitk.ReadImage(volume_path).GetSpacing()
 
         volume = self.loader(volume_path)  # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
+        origin_shape = label.shape
 
-        volume, label = self.get_augmentation(volume, label, index_used)
+        volume, label, dismap = self.get_augmentation(index_used, volume, label, dismap)
 
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         volume = self._apply_pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
-        volume, label = self._apply_transform(volume, label)
+        volume, label, dismap = self._apply_transform(volume, label, dismap)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         volume = self._apply_post_transform(volume)
 
@@ -164,10 +169,14 @@ class MrususPlusDataset(NIIDataset):
 
         volume = self.to_tensor(volume)  # NCDHW
         label = self.to_tensor(label)
+        dismap = self.to_tensor(dismap)
         spacing = torch.Tensor(spacing[::-1])
+        now_shape = label.shape
 
-        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
-                'spacing': spacing}
+        return {'volume': volume, 'label': label, 'dismap': dismap,
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path,
+                'origin_shape': origin_shape, 'now_shape': now_shape, 'spacing': spacing
+                }
 
 
 class TestMrususPlusDataset(BaseDataset):
@@ -180,11 +189,13 @@ class TestMrususPlusDataset(BaseDataset):
     def __getitem__(self, index):
         volume_path = self.paths[index]['volume']
         label_path = self.paths[index]['label']
+        dismap_path = self.paths[index]['dismap']
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
         spacing = sitk.ReadImage(volume_path).GetSpacing()
-        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
-                'spacing': tuple(spacing[::-1])}
+        return {'volume': volume, 'label': label, 'dismap': dismap, 'spacing': tuple(spacing[::-1]),
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path}
 
     def __len__(self):
         return self.data_size
@@ -207,11 +218,13 @@ class PredictMrususPlusDataset(BaseDataset):
     def __getitem__(self, index):
         volume_path = self.paths[index]['volume']
         label_path = self.paths[index]['label']
+        dismap_path = self.paths[index]['dismap']
 
         spacing = sitk.ReadImage(volume_path).GetSpacing()
 
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
         origin_shape = label.shape
 
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
@@ -219,7 +232,7 @@ class PredictMrususPlusDataset(BaseDataset):
             volume = self.pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
         if self.transform:
-            volume, label = self.transform(volume, label)
+            volume, label, dismap = self.transform(volume, label, dismap)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         if self.post_transform:
             volume = self.post_transform(volume)
@@ -230,7 +243,8 @@ class PredictMrususPlusDataset(BaseDataset):
         label = self.to_tensor(label)
         spacing = torch.Tensor(spacing[::-1])
 
-        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
+        return {'volume': volume, 'label': label, 'dismap': dismap,
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path,
                 'origin_shape': origin_shape, 'now_shape': now_shape, 'spacing': spacing}
 
     def __len__(self):

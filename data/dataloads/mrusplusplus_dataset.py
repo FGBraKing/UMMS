@@ -176,8 +176,8 @@ class MrusPlusPlusDataset(NIIDataset):
             us_aug_index = mr_aug_index
         else:
             us_aug_index = self.get_aug_index(data_index)
-        mr_volume, mr_label = self.apply_augmentation_args(mr_volume, mr_label, *self.parse_index(mr_aug_index))
-        us_volume, us_label = self.apply_augmentation_args(us_volume, us_label, *self.parse_index(us_aug_index))
+        mr_volume, mr_label, mr_dm = self.apply_augmentation_args(mr_volume, mr_label, mr_dm, *self.parse_index(mr_aug_index))
+        us_volume, us_label, us_dm = self.apply_augmentation_args(us_volume, us_label, us_dm, *self.parse_index(us_aug_index))
         # print(index, index_used, mr_aug_index, us_aug_index, *self.parse_index(mr_aug_index))
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         mr_volume = self._apply_pre_transform(mr_volume)
@@ -189,16 +189,20 @@ class MrusPlusPlusDataset(NIIDataset):
             mr_volume, mr_label = random_scale(mr_volume, mr_label, 3, 1, scale_all, p_scale_per_sample=1.0)
             us_volume, us_label = random_scale(us_volume, us_label, 3, 1, scale_all, p_scale_per_sample=1.0)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
-        mr_volume, mr_label = self._apply_transform(mr_volume, mr_label)
-        us_volume, us_label = self._apply_transform(us_volume, us_label)
+        mr_volume, mr_label, mr_dm = self._apply_transform(mr_volume, mr_label, mr_dm)
+        us_volume, us_label, us_dm = self._apply_transform(us_volume, us_label, us_dm)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         mr_volume = self._apply_post_transform(mr_volume)
         us_volume = self._apply_post_transform(us_volume)
 
         mr_volume = self.to_tensor(mr_volume)
         mr_label = self.to_tensor(mr_label)
+        mr_dm = self.to_tensor(mr_dm)
+
         us_volume = self.to_tensor(us_volume)
         us_label = self.to_tensor(us_label)
+        us_dm = self.to_tensor(us_dm)
+
         mr_spacing = torch.Tensor(mr_spacing[::-1])
         us_spacing = torch.Tensor(us_spacing[::-1])
         mr_now_shape = mr_label.shape
@@ -206,12 +210,14 @@ class MrusPlusPlusDataset(NIIDataset):
 
         return {
             'mr_volume': mr_volume, 'mr_volume_path': mr_path['volume'],
-            'mr_label': mr_label, 'mr_label_path': mr_path['label'], 'mr_spacing': mr_spacing,
-            'mr_origin_shape': mr_origin_shape, 'mr_now_shape': mr_now_shape,
+            'mr_label': mr_label, 'mr_label_path': mr_path['label'],
+            'mr_dismap': mr_dm, 'mr_dismap_path': mr_path['dismap'],
+            'mr_spacing': mr_spacing, 'mr_origin_shape': mr_origin_shape, 'mr_now_shape': mr_now_shape,
+
             'us_volume': us_volume, 'us_volume_path': us_path['volume'],
-            'us_label': us_label, 'us_label_path': us_path['label'], 'us_spacing': us_spacing,
-            'us_origin_shape': us_origin_shape, 'us_now_shape': us_now_shape,
-            'mr_dismap': mr_dm, 'us_dismap': us_dm
+            'us_label': us_label, 'us_label_path': us_path['label'],
+            'us_dismap': us_dm, 'us_dismap_path': us_path['dismap'],
+            'us_spacing': us_spacing, 'us_origin_shape': us_origin_shape, 'us_now_shape': us_now_shape
         }
 
     @staticmethod
@@ -242,13 +248,16 @@ class MrusPlusPlusDataset(NIIDataset):
         rot_angle_index = index // 1
         return mirror_index, rot_axis_index, rot_angle_index
 
-    def apply_augmentation_args(self, data, seg, mirror_aixs, rot_axis, rot_times):
+    def apply_augmentation_args(self, data, seg, dismap, mirror_aixs, rot_axis, rot_times):
         data = np.flip(data, self.mirror_axes[mirror_aixs-1]) if mirror_aixs > 0 else data
         data = np.rot90(data, rot_times, axes=self.rotate_axes[rot_axis])
 
         seg = np.flip(seg, self.mirror_axes[mirror_aixs - 1]) if mirror_aixs > 0 else seg
         seg = np.rot90(seg, rot_times, axes=self.rotate_axes[rot_axis])
-        return data, seg
+
+        dismap = np.flip(dismap, self.mirror_axes[mirror_aixs - 1]) if mirror_aixs > 0 else dismap
+        dismap = np.rot90(dismap, rot_times, axes=self.rotate_axes[rot_axis])
+        return data, seg, dismap
 
     def custom_debug(self, *args, **kwargs):
         print(f'data_size:{self.data_size}')
@@ -309,13 +318,13 @@ class PredictMrusPlusPlusDataset(NIIDataset):
         us_now_shape = us_label.shape
 
         return {
-            'mr_volume': mr_volume, 'mr_volume_path': mr_path['volume'],
-            'mr_label': mr_label, 'mr_label_path': mr_path['label'], 'mr_spacing': mr_spacing,
-            'mr_origin_shape': mr_origin_shape, 'mr_now_shape': mr_now_shape,
-            'us_volume': us_volume, 'us_volume_path': us_path['volume'],
-            'us_label': us_label, 'us_label_path': us_path['label'], 'us_spacing': us_spacing,
-            'us_origin_shape': us_origin_shape, 'us_now_shape': us_now_shape,
-            'mr_dismap': mr_dm, 'us_dismap': us_dm
+            'mr_volume': mr_volume, 'mr_label': mr_label, 'mr_dismap': mr_dm,
+            'mr_volume_path': mr_path['volume'], 'mr_label_path': mr_path['label'], 'mr_dismap_path': mr_path['dismap'],
+            'mr_origin_shape': mr_origin_shape, 'mr_now_shape': mr_now_shape, 'mr_spacing': mr_spacing,
+
+            'us_volume': us_volume, 'us_label': us_label, 'us_dismap': us_dm,
+            'us_volume_path': us_path['volume'], 'us_label_path': us_path['label'], 'us_dismap_path': us_path['dismap'],
+            'us_origin_shape': us_origin_shape, 'us_now_shape': us_now_shape, 'us_spacing': us_spacing
         }
 
 

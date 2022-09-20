@@ -21,7 +21,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
         return [
             {
                 'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+                'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi')),
+                'dismap': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'dm'))
             }
             for p_id in pat_ids
         ]
@@ -65,7 +66,8 @@ def get_data_path(dataroot, data_phase, fold=0, k_fold=5, random_seed=1008):
     us_paths = [
         {
             'volume': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'volume')),
-            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi'))
+            'label': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'roi')),
+            'dismap': os.path.join(dataroot, p_id, "{}_{}_{}.nii".format(p_id, 'us', 'dm'))
         }
         for p_id in used_ids
     ]
@@ -89,26 +91,35 @@ class MrususDataset(NIIDataset):
 
         volume_path = self.paths[index_used]['volume']
         label_path = self.paths[index_used]['label']
+        dismap_path = self.paths[index_used]['dismap']
 
         spacing = sitk.ReadImage(volume_path).GetSpacing()
 
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
+
+        origin_shape = label.shape
+
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         volume = self._apply_pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
-        volume, label = self._apply_transform(volume, label)
+        volume, label, dismap = self._apply_transform(volume, label, dismap)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         volume = self._apply_post_transform(volume)
 
         # volume, label = crop(volume, label, self.opt.crop_size[::-1], crop_type='center')
+        now_shape = label.shape
 
         volume = self.to_tensor(volume)
         label = self.to_tensor(label)
+        dismap = self.to_tensor(dismap)
         spacing = torch.Tensor(spacing[::-1])
 
-        return {'volume': volume, 'label': label,
-                'volume_path': volume_path, 'label_path': label_path, 'spacing': spacing}
+        return {'volume': volume, 'label': label, 'dismap': dismap,
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path,
+                'origin_shape': origin_shape, 'now_shape': now_shape, 'spacing': spacing
+                }
 
     def custom_debug(self, *args, **kwargs):
         print(f'data_size:{self.data_size}')
@@ -139,11 +150,13 @@ class TestMrususDataset(BaseDataset):
     def __getitem__(self, index):
         volume_path = self.paths[index]['volume']
         label_path = self.paths[index]['label']
+        dismap_path = self.paths[index]['dismap']
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
         spacing = sitk.ReadImage(volume_path).GetSpacing()
-        return {'volume': volume, 'label': label,
-                'volume_path': volume_path, 'label_path': label_path, 'spacing': tuple(spacing[::-1])}
+        return {'volume': volume, 'label': label, 'dismap': dismap, 'spacing': tuple(spacing[::-1]),
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path}
 
     def __len__(self):
         return self.data_size
@@ -167,11 +180,13 @@ class PredictMrususDataset(BaseDataset):
     def __getitem__(self, index):
         volume_path = self.paths[index]['volume']
         label_path = self.paths[index]['label']
+        dismap_path = self.paths[index]['dismap']
 
         spacing = sitk.ReadImage(volume_path).GetSpacing()
 
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
+        dismap = self.loader(dismap_path)
         origin_shape = label.shape
 
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
@@ -179,7 +194,7 @@ class PredictMrususDataset(BaseDataset):
             volume = self.pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
         if self.transform:
-            volume, label = self.transform(volume, label)
+            volume, label, dismap = self.transform(volume, label, dismap)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         if self.post_transform:
             volume = self.post_transform(volume)
@@ -190,7 +205,8 @@ class PredictMrususDataset(BaseDataset):
         label = self.to_tensor(label)
         spacing = torch.Tensor(spacing[::-1])
 
-        return {'volume': volume, 'label': label, 'volume_path': volume_path, 'label_path': label_path,
+        return {'volume': volume, 'label': label, 'dismap': dismap,
+                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path,
                 'origin_shape': origin_shape, 'now_shape': now_shape, 'spacing': spacing}
 
     def __len__(self):
