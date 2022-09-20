@@ -65,7 +65,7 @@ class CustomDataset(BaseDataset):
         return volume
 
     # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
-    def _apply_transform(self, volume, label, dismap=None):
+    def _apply_transform(self, volume, label):
         if self.transform:
             # # print(volume.shape)
             # # print(volume_path)
@@ -75,8 +75,8 @@ class CustomDataset(BaseDataset):
             # volume_label = self.transform(volume_label)         # tensor
             # volume, label = volume_label[:-1, ...], volume_label[-1:, ...]
             # # label = torch.unsqueeze(label, dim=0)
-            volume, label, dismap = self.transform(volume, label, dismap)
-        return volume, label, dismap
+            volume, label = self.transform(volume, label)
+        return volume, label
 
     # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
     def _apply_post_transform(self, volume):

@@ -157,7 +157,7 @@ def do_train(opt):
         else:
             RANDOMMANAGE.set_smart_numpy_random(epoch)
             RANDOMMANAGE.set_smart_python_random(epoch)
-        print('main pid:', os.getpid(), 'random id: ', id(RANDOMMANAGE.get_smart_numpy_random()))
+        # print('main pid:', os.getpid(), 'random id: ', id(RANDOMMANAGE.get_smart_numpy_random()))
 
         if epoch == 1 and opt.continue_train is False and opt.DDP is True:
             ddp_logger.info('saving networks and than load!')

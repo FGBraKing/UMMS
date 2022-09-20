@@ -191,20 +191,20 @@ class MrusmrDataset(NIIDataset):
 
         volume_path = self.paths[index_used]['volume']
         label_path = self.paths[index_used]['label']
-        dismap_path = self.paths[index_used]['dismap']
+        # dismap_path = self.paths[index_used]['dismap']
 
         spacing = sitk.ReadImage(volume_path).GetSpacing()
 
         volume = self.loader(volume_path)   # DHW, zyx
         label = self.loader(label_path)
-        dismap = self.loader(dismap_path)
+        # dismap = self.loader(dismap_path)
 
         origin_shape = label.shape
 
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         volume = self._apply_pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
-        volume, label, dismap = self._apply_transform(volume, label, dismap)
+        volume, label = self._apply_transform(volume, label)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         volume = self._apply_post_transform(volume)
 
@@ -213,11 +213,11 @@ class MrusmrDataset(NIIDataset):
 
         volume = self.to_tensor(volume)     # NCDHW
         label = self.to_tensor(label)
-        dismap = self.to_tensor(dismap)
+        # dismap = self.to_tensor(dismap)
         spacing = torch.Tensor(spacing[::-1])
 
-        return {'volume': volume, 'label': label, 'dismap': dismap,
-                'volume_path': volume_path, 'label_path': label_path, 'dismap_path': dismap_path,
+        return {'volume': volume, 'label': label,  # 'dismap': dismap,
+                'volume_path': volume_path, 'label_path': label_path,  # 'dismap_path': dismap_path,
                 'origin_shape': origin_shape, 'now_shape': now_shape, 'spacing': spacing
                 }
 
@@ -294,7 +294,7 @@ class PredictMrusmrDataset(BaseDataset):
             volume = self.pre_transform(volume)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
         if self.transform:
-            volume, label, dismap = self.transform(volume, label, dismap)
+            volume, label = self.transform(volume, label)
         # 单独对volume做的一些处理，主要包括亮度、对比度、噪声变换等
         if self.post_transform:
             volume = self.post_transform(volume)
