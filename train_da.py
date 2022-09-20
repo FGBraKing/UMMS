@@ -17,6 +17,7 @@ from utils.others.distributed_utils import record_distribute_ddp, torch_distribu
 from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict, show_image, show_paired_image
 # matplotlib.use('TKAgg')
 
+from utils.others.random_manage import RANDOMMANAGE
 from configs.excess_config import ex_config
 
 save_threshold = 0.70
@@ -56,7 +57,7 @@ def do_train(opt):
     device_name = get_device_name()
     opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
     # ====================================================配置gpu等全局变量==============================================
-    opt.random_state = np.random.RandomState(seed=opt.seed)
+    # opt.random_state = np.random.RandomState(seed=opt.seed)
 
     # print(torch.cuda.is_available())
     # setup default cuda device, 配合tensor.cuda()使用
@@ -79,7 +80,9 @@ def do_train(opt):
         opt = record_distribute_ddp(opt)
 
     on_master = (not opt.DDP) or (opt.DDP and opt.rank == 0)
-    init_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    # init_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    RANDOMMANAGE.init_global_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    RANDOMMANAGE.set_base_seed(opt.seed)
 
     expr_dir = os.path.join(opt.checkpoints_dir, opt.name)  # opt.dataset_name + opt.model_name + opt.name
     opt_save_name = os.path.join(expr_dir, '{}_opt.txt'.format(opt.phase))
@@ -141,6 +144,12 @@ def do_train(opt):
 
     for epoch in range(opt.epoch_start, opt.num_epochs + 1):
         ex_config.current_epoch = epoch
+        if opt.fixed_seed:
+            RANDOMMANAGE.set_smart_numpy_random(0)
+            RANDOMMANAGE.set_smart_python_random(0)
+        else:
+            RANDOMMANAGE.set_smart_numpy_random(epoch)
+            RANDOMMANAGE.set_smart_python_random(epoch)
         if epoch == 1 and opt.continue_train is False and opt.DDP is True:
             ddp_logger.info('saving networks and than load!')
             # 保证每个进程的网络初始权重相同
@@ -156,8 +165,9 @@ def do_train(opt):
         epoch_start_time = time.time()
 
         # 更新dataloader的seed和优化器的学习率
-        if not opt.serial_batches:
-            dataloader.set_epoch(epoch)
+        # if not opt.serial_batches:
+        #     dataloader.set_epoch(epoch)
+        dataloader.set_epoch(epoch)
         model.update_learning_rate(epoch)   # update learning rates in the beginning/ending of every epoch.
         model.zero_grad_optimizers()
 

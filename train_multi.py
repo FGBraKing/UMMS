@@ -15,11 +15,12 @@ from utils.forLogs import Visualizer, get_logger
 from utils.others.utils import init_seed, init_torch, print_numpy, mkdirs, DataPool, get_device_name
 from utils.others.distributed_utils import record_distribute_ddp, torch_distributed_zero_first
 from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict, show_image, show_paired_image
+from utils.others.random_manage import RANDOMMANAGE
 # matplotlib.use('TKAgg')
 
 from configs.excess_config import ex_config
 
-save_threshold = 0.70
+save_threshold = 0.80
 pool_size = 3
 
 
@@ -40,7 +41,7 @@ def set_local_gpu(args):
 
 
 def train():
-    opt = get_opt(args=['--config_path=configs/defaults/dsbnwithedge_train.yaml', '--use_config', '--use_current_local_rank'])
+    opt = get_opt(args=['--config_path=configs/defaults/dsbn_train.yaml', '--use_config', '--use_current_local_rank'])
     # dsbnwithauxtask_train   dsbnpluswithedge_train  priorda_train dualstreamtranswithprior_train
     init_torch(gpu_id=opt.visible_gpu, deterministic=opt.deterministic)
     assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
@@ -56,7 +57,7 @@ def do_train(opt):
     device_name = get_device_name()
     opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
     # ====================================================配置gpu等全局变量==============================================
-    opt.random_state = np.random.RandomState(seed=opt.seed)
+    # opt.random_state = np.random.RandomState(seed=opt.seed)
 
     # print(torch.cuda.is_available())
     # setup default cuda device, 配合tensor.cuda()使用
@@ -78,7 +79,9 @@ def do_train(opt):
         # 通过这一步把初始化后的rank等参数存入opt，统一不同框架的用法
 
     on_master = (not opt.DDP) or (opt.DDP and opt.rank == 0)
-    init_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    # init_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    RANDOMMANAGE.init_global_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    RANDOMMANAGE.set_base_seed(opt.seed)
 
     expr_dir = os.path.join(opt.checkpoints_dir, opt.name)  # opt.dataset_name + opt.model_name + opt.name
     opt_save_name = os.path.join(expr_dir, '{}_opt.txt'.format(opt.phase))
@@ -148,6 +151,14 @@ def do_train(opt):
 
     for epoch in range(opt.epoch_start, opt.num_epochs + 1):
         ex_config.current_epoch = epoch
+        if opt.fixed_seed:
+            RANDOMMANAGE.set_smart_numpy_random(0)
+            RANDOMMANAGE.set_smart_python_random(0)
+        else:
+            RANDOMMANAGE.set_smart_numpy_random(epoch)
+            RANDOMMANAGE.set_smart_python_random(epoch)
+        print('main pid:', os.getpid(), 'random id: ', id(RANDOMMANAGE.get_smart_numpy_random()))
+
         if epoch == 1 and opt.continue_train is False and opt.DDP is True:
             ddp_logger.info('saving networks and than load!')
             # 保证每个进程的网络初始权重相同
@@ -163,8 +174,9 @@ def do_train(opt):
         epoch_start_time = time.time()
 
         # 更新dataloader的seed和优化器的学习率
-        if not opt.serial_batches:
-            dataloader.set_epoch(epoch)
+        # if not opt.serial_batches:
+        #     dataloader.set_epoch(epoch)     # 每个epoch使用不同的seed
+        dataloader.set_epoch(epoch)     # 每个epoch使用不同的seed
         model.update_learning_rate(epoch)   # update learning rates in the beginning/ending of every epoch.
         model.zero_grad_optimizers()
 
@@ -420,7 +432,10 @@ def combine_metrics(metrics_list):
         value = 0
         try:
             for v in metrics_list:
-                value += v[key]
+                if v[key] > 0:
+                    value += v[key]
+                else:
+                    value -= v[key]
         except TypeError as e:
             print('some worng of key :{} with value: {}'.format(key, metrics_list[0][key]))
             continue

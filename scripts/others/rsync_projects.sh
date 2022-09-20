@@ -15,15 +15,15 @@ server0=(
 )
 
 server1=(
-  ["ip"]="172.21.141.5"
-  ["home"]="/home/lf"
-  ["working_dir"]="/home/lf/wind_lf"
-)
-
-server2=(
   ["ip"]="172.21.16.190"
   ["home"]="/home/lf"
   ["working_dir"]="/home/lf/data_lf"
+)
+
+server2=(
+  ["ip"]="172.21.141.5"
+  ["home"]="/home/lf"
+  ["working_dir"]="/home/lf/wind_lf"
 )
 
 server3=(
@@ -58,7 +58,7 @@ do
 done
 
 source_data_dir=$(eval echo "\${server${valid_id}[working_dir]}/DATA/")
-source_project_dir=$(eval echo "\${server${valid_id}[working_dir]}/PROJECT/")
+source_project_dir=$(eval echo "\${server${valid_id}[working_dir]}/PROJECT/UMMS/")
 
 echo "source_data_dir: ${source_data_dir}"
 echo "source_project_dir: ${source_project_dir}"
@@ -72,12 +72,12 @@ do
     target_ip=$(eval echo '$'"{server${id}[ip]}")
     target_working_dir=$(eval echo '$'"{server${id}[working_dir]}")
     target_data_dir="${username}@${target_ip}:${target_working_dir}/DATA/"
-    target_project_dir="${username}@${target_ip}:${target_working_dir}/PROJECT/"
+    target_project_dir="${username}@${target_ip}:${target_working_dir}/PROJECT/UMMS/"
     echo "synchronizing from ${source_data_dir}  to  ${target_data_dir}"
     eval "rsync -avP --update --delete-after --delete-excluded --exclude='.*' ${source_data_dir}  ${target_data_dir}"
     echo "synchronizing from ${source_project_dir}  to  ${target_project_dir}"
     # 完全同步、同步traces、同步代码
-    eval "rsync -avP --update --delete-after --delete-excluded  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
+#    eval "rsync -avP --update --delete-after --delete-excluded  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
     eval "rsync -avP --update  --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
     eval "rsync -avP --update --delete-after --exclude='traces/*' --exclude='.*' --exclude='*/__pycache__/' ${source_project_dir} ${target_project_dir}"
   fi

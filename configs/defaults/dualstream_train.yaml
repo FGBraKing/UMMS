@@ -2,27 +2,29 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrus11211280_fold4_bs4_DualStreamV1_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6'
+name : 'mrus11211280_fold4_bs4_DualStreamV4_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_2x400_0.6'
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
-suffix : 'AugPlusPlus'
+suffix : 'baseline'
 # SingleSource SingleTarget || AugRugular AugPlus AugPlusPlus  30
 # DualStreamV1 DualStreamV2 DualStreamV3 DualStreamV4 || AugRugular AugPlus AugPlusShufflt AugPlusPlus AugProxy  40 ==>
 # SingleBoth || AugRugular AugPlus AugPlusShufflt AugPlusPlus  AugProxy    25
 # (2*3+5*5)*5=155
 
 fold : 4
-visible_gpu : !!str "'0'"
-network_type : 'V1'
-num_epochs : 30
+visible_gpu : !!str "'1'"
+network_type : 'V4'
+num_epochs : 400
 
-dataset_name : 'mrusplusplus'
+dataset_name : 'mrus'
+# mrusplusplus
 fake_shufflt : False
 proxy_two : False
 
-preprocess :  'elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+preprocess :  'randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate'
             # 'elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
             # 'elastic_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
-
+            #         'randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate'
+            #            'synscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate'
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
 batch_size : 4
 gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
@@ -33,12 +35,12 @@ verbose : false
 model_name : 'dualstream'
 init_channel_number : 16
 conv_order : 'cbl'
-loss_opt : 'using custom, 1*bdc+1*bce, pos-weight=1, 1e-4_l2'
+loss_opt : 'using custom, 1*bdc+1*bce, pos-weight=1.5, 1e-4_l2'
 optimizer_name : 'adam'
 lr : 1e-4
 
 lr_policy : 'poly'
-lr_cycle_num : 3
+lr_cycle_num : 2
 lr_cycle_decay : 0.6
 
 decay_epochs : 100
@@ -127,7 +129,7 @@ lr_noise_pct : 0.67
 lr_noise_std : 1.
 
 warmup_lr : 1e-6
-warmup_epochs : 20
+warmup_epochs : 10
 warmup_prefix : True
 
 lr_cycle_mul : 1.0
@@ -135,7 +137,7 @@ lr_cycle_mul : 1.0
 lr_cycle_limit : 5
 #cooldown_epochs : 10
 
-#min_lr : 1e-7
+min_lr : 1e-6
 #decay_epochs : 100
 #decay_rate : 0.3
 #lr_k_decay : 1.0
@@ -176,9 +178,9 @@ deterministic : True
 #suffix : ''
 #verbose : true
 # --files path
-logs_dir : './traces/logs/DualStream'
-results_dir : './traces/results/DualStream'
-checkpoints_dir : './traces/checkpoints/DualStream'
+logs_dir : './traces/logs/PhaseBaseLine/DualStream'
+results_dir : './traces/results/PhaseBaseLine/DualStream'
+checkpoints_dir : './traces/checkpoints/PhaseBaseLine/DualStream'
 optimizer_path : ~
 # --basic train
 #epoch_start : 1
@@ -194,7 +196,7 @@ save_by_iter : false
 display_freq : 12
 print_freq : 1
 plot_freq : 1
-val_epoch_freq : 1
+val_epoch_freq : 30
 test_on_train : true
 # --visualer
 with_tensorboard : False

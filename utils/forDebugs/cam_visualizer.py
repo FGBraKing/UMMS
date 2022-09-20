@@ -16,6 +16,7 @@ from utils.others.utils import init_seed, init_torch, print_numpy
 from data.dataloads.base_dataset import BaseDataset
 from data.transforms.transformOnArray import normalize, NormalizeRange
 from models.modules.segmentation_model.unet_custom import UnetCustom as UNet
+from models.modules.MultimodalSegmentation.DualStream import DualStreamUnetV1, DualStreamUnetV2, DualStreamUnetV3, DualStreamUnetV4, SingleUnet
 from utils.others.img_io import show_volume_label
 
 to_std_image_uint8 = NormalizeRange(0, 255, np.uint8)
@@ -240,6 +241,72 @@ def define_net(opt, device):
     return net
 
 
+def define_dualstream(opt, device, domains=None):
+
+    if opt.network_type == "V1":
+        net = DualStreamUnetV1(in_channels=opt.input_nc,
+                               out_channels=opt.output_nc,
+                               domains=domains,
+                               f_maps=opt.init_channel_number,
+                               num_levels=5,
+                               with_activation=False,
+                               final_sigmoid=True,
+                               interpolation=opt.up_interpolate,
+                               norm_type="batch",
+                               act_type="lrelu").to(device)
+    elif opt.network_type == "V2":
+        net = DualStreamUnetV2(in_channels=opt.input_nc,
+                               out_channels=opt.output_nc,
+                               domains=domains,
+                               f_maps=opt.init_channel_number,
+                               num_levels=5,
+                               with_activation=False,
+                               final_sigmoid=True,
+                               interpolation=True,
+                               norm_type="batch",
+                               act_type="lrelu").to(device)
+    elif opt.network_type == "V3":
+        net = DualStreamUnetV3(in_channels=opt.input_nc,
+                               out_channels=opt.output_nc,
+                               domains=domains,
+                               f_maps=opt.init_channel_number,
+                               num_levels=5,
+                               with_activation=False,
+                               final_sigmoid=True,
+                               interpolation=True,
+                               norm_type="batch",
+                               act_type="lrelu").to(device)
+    elif opt.network_type == "V4":
+        net = DualStreamUnetV4(in_channels=opt.input_nc,
+                               out_channels=opt.output_nc,
+                               domains=domains,
+                               f_maps=opt.init_channel_number,
+                               num_levels=5,
+                               with_activation=False,
+                               final_sigmoid=True,
+                               interpolation=True,
+                               norm_type="batch",
+                               act_type="lrelu").to(device)
+    else:
+        net = SingleUnet(in_channels=opt.input_nc,
+                         out_channels=opt.output_nc,
+                         domains=domains,
+                         f_maps=opt.init_channel_number,
+                         num_levels=5,
+                         with_activation=False,
+                         final_sigmoid=True,
+                         interpolation=True,
+                         norm_type="batch",
+                         act_type="lrelu").to(device)
+    net = net.to(device)
+    if opt.verbose:
+        num_params = 0
+        for param in net.parameters():
+            num_params += param.numel()
+        print(net, '\n[Network %s] Total number of parameters : %.3f M' % (opt.model_name, num_params / 1e6))
+    return net
+
+
 def load_weithts(net, weight_path, device, name='segment'):
     print('loading the model from %s' % weight_path)
     state_dict = torch.load(weight_path, map_location=device)
@@ -282,24 +349,28 @@ def print_module_name(model):
 
 def test_cam():
     kwargs = {
-        'model_name': 'unet',
+        'model_name': 'dualstream',
+        'network_type': 'single',
         'input_nc': 1,
         'output_nc': 1,
+        'domains': ('source', 'target'),
         'init_channel_number': 16,
-        'verbose': False,
-        'weight_path': '/home/lf/data_fong/PROJECT/UMMS/traces/checkpoints/mrus_patch_kfold/mrusus128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti/134_net_mrusus128_fold0_patch_bs8_unet3d_ch16_combo_1_1_2_l2_2e-4_adam_2e-4_poly_2x300_0.6_2080Ti.pth',
+        'verbose': True,
+        'weight_path': '/home/lf/data_fong/PROJECT/UMMS/traces/checkpoints/PhaseBaseLine/DualStream/mrus11211280_fold0_bs4_SingleBoth_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_3x400_0.6_baseline_1080Ti/latest_net_mrus11211280_fold0_bs4_SingleBoth_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_3x400_0.6_baseline_1080Ti.pth',
 
-        'dataset_name': 'mrusus',
-        'dataroot': '../..//traces/datasets/MR-USviaFenster20-pre128',
+        'dataset_name': 'mrusmr',
+        'dataroot': '/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280',
         'phase': 'test',
         'fold': 0,
         'custom': True,
         'preprocess': 'centercrop',
-        'crop_size': (96, 96, 80),
+        'crop_size': (112, 112, 80),
         'num_threads': 16,
 
-        # in_conv.conv.conv2.conv  encoders.0.double_conv.conv2.conv decoders.3.double_conv.conv2.conv out_conv.conv3d
-        'layer_name': 'encoders.3.double_conv.conv2.conv',
+        # encoders.4  decoders.0  decoders.1 decoders.2 decoders.3
+        # decoders.3.basic_module.conv2.conv  out_conv.conv3d
+        # encoders.4.basic_module.conv2.conv decoders.3.basic_module.conv2.conv   outconv.conv3d
+        'layer_name': 'decoders.3.basic_module.conv2.conv',
         'loss_name': 'custom',
 
         'local_gpu': 1,
@@ -322,8 +393,9 @@ def test_cam():
                                                   drop_last=False)
     print('test_dataloader:{}'.format(len(test_dataloader)))
 
-    network = define_net(opt, device)
-    network = load_weithts(network, opt.weight_path, device, name='segment')
+    # network = define_net(opt, device)
+    network = define_dualstream(opt, device, domains=('source', 'target'))
+    network = load_weithts(network, opt.weight_path, device, name='umms')   # segment
     network.eval()
 
     get_cam = GradCAM3D(network, opt.layer_name, opt.loss_name)
@@ -331,7 +403,7 @@ def test_cam():
     # get_cam = XGradCAM3D(network, opt.layer_name, opt.loss_name)
 
     for patient_id, data in enumerate(test_dataloader):
-        if patient_id in [0, 1, 3]:
+        if patient_id not in [3]:
             continue
         volume_name = os.path.basename(data['volume_path'][0]).split('.')[0]
         print(patient_id, volume_name)
@@ -343,8 +415,8 @@ def test_cam():
         label = label.cpu().numpy()[0, 0]
         # show_volume_cam(volume, cam, row=3, col=3, title=volume_name)
         # show_cam(cam, row=3, col=3, title=volume_name)
-        # show_cam_label(cam, label, interval=1, add_line=True, row=3, col=3, title=volume_name)
-        show_volume_cam_label(volume, cam, label, interval=1, add_line=True, row=3, col=2, title=volume_name)
+        show_cam_label(cam, label, interval=1, add_line=True, row=3, col=3, title=volume_name)
+        # show_volume_cam_label(volume, cam, label, interval=1, add_line=True, row=3, col=2, title=volume_name)
         # show_volume_label(volume, label, interval=1, add_line=True, row=3, col=2, title=volume_name)
         # input()
         # while input() != 1:
@@ -353,14 +425,13 @@ def test_cam():
         # time.sleep(16)
 
 
-def model_test():
+def single_model_test():
     kwargs = {
         'model_name': 'unet',
         'input_nc': 1,
         'output_nc': 1,
         'init_channel_number': 16,
         'verbose': True,
-
         'weight_path': '../../traces/checkpoints/mrusus128_fold1_bs3_unet3d_ch16_combo_1_1_2_l2_5e-4_adam_5e-5_poly_3x300_0.6_2080Ti/252_net_mrusus128_fold1_bs3_unet3d_ch16_combo_1_1_2_l2_5e-4_adam_5e-5_poly_3x300_0.6_2080Ti.pth',
 
         'local_gpu': 0
@@ -372,19 +443,287 @@ def model_test():
     network = load_weithts(network, opt.weight_path, device, name='segment')
     network.eval()
     print_module_name(network)
+    # in_conv
+    # in_conv.conv
+    # in_conv.conv.conv1
+    # in_conv.conv.conv1.conv
+    # in_conv.conv.conv1.norm
+    # in_conv.conv.conv1.norm.norm
+    # in_conv.conv.conv1.act
+    # in_conv.conv.conv2
+    # in_conv.conv.conv2.conv
+    # in_conv.conv.conv2.norm
+    # in_conv.conv.conv2.norm.norm
+    # in_conv.conv.conv2.act
+    # encoders
+    # encoders.0
+    # encoders.0.max_pool
+    # encoders.0.double_conv
+    # encoders.0.double_conv.conv1
+    # encoders.0.double_conv.conv1.conv
+    # encoders.0.double_conv.conv1.norm
+    # encoders.0.double_conv.conv1.norm.norm
+    # encoders.0.double_conv.conv1.act
+    # encoders.0.double_conv.conv2
+    # encoders.0.double_conv.conv2.conv
+    # encoders.0.double_conv.conv2.norm
+    # encoders.0.double_conv.conv2.norm.norm
+    # encoders.0.double_conv.conv2.act
+    # encoders.1
+    # encoders.1.max_pool
+    # encoders.1.double_conv
+    # encoders.1.double_conv.conv1
+    # encoders.1.double_conv.conv1.conv
+    # encoders.1.double_conv.conv1.norm
+    # encoders.1.double_conv.conv1.norm.norm
+    # encoders.1.double_conv.conv1.act
+    # encoders.1.double_conv.conv2
+    # encoders.1.double_conv.conv2.conv
+    # encoders.1.double_conv.conv2.norm
+    # encoders.1.double_conv.conv2.norm.norm
+    # encoders.1.double_conv.conv2.act
+    # encoders.2
+    # encoders.2.max_pool
+    # encoders.2.double_conv
+    # encoders.2.double_conv.conv1
+    # encoders.2.double_conv.conv1.conv
+    # encoders.2.double_conv.conv1.norm
+    # encoders.2.double_conv.conv1.norm.norm
+    # encoders.2.double_conv.conv1.act
+    # encoders.2.double_conv.conv2
+    # encoders.2.double_conv.conv2.conv
+    # encoders.2.double_conv.conv2.norm
+    # encoders.2.double_conv.conv2.norm.norm
+    # encoders.2.double_conv.conv2.act
+    # encoders.3
+    # encoders.3.max_pool
+    # encoders.3.double_conv
+    # encoders.3.double_conv.conv1
+    # encoders.3.double_conv.conv1.conv
+    # encoders.3.double_conv.conv1.norm
+    # encoders.3.double_conv.conv1.norm.norm
+    # encoders.3.double_conv.conv1.act
+    # encoders.3.double_conv.conv2
+    # encoders.3.double_conv.conv2.conv
+    # encoders.3.double_conv.conv2.norm
+    # encoders.3.double_conv.conv2.norm.norm
+    # encoders.3.double_conv.conv2.act
+    # decoders
+    # decoders.0
+    # decoders.0.upsample
+    # decoders.0.upsample.deconv
+    # decoders.0.upsample.norm
+    # decoders.0.upsample.norm.norm
+    # decoders.0.upsample.act
+    # decoders.0.double_conv
+    # decoders.0.double_conv.conv1
+    # decoders.0.double_conv.conv1.conv
+    # decoders.0.double_conv.conv1.norm
+    # decoders.0.double_conv.conv1.norm.norm
+    # decoders.0.double_conv.conv1.act
+    # decoders.0.double_conv.conv2
+    # decoders.0.double_conv.conv2.conv
+    # decoders.0.double_conv.conv2.norm
+    # decoders.0.double_conv.conv2.norm.norm
+    # decoders.0.double_conv.conv2.act
+    # decoders.1
+    # decoders.1.upsample
+    # decoders.1.upsample.deconv
+    # decoders.1.upsample.norm
+    # decoders.1.upsample.norm.norm
+    # decoders.1.upsample.act
+    # decoders.1.double_conv
+    # decoders.1.double_conv.conv1
+    # decoders.1.double_conv.conv1.conv
+    # decoders.1.double_conv.conv1.norm
+    # decoders.1.double_conv.conv1.norm.norm
+    # decoders.1.double_conv.conv1.act
+    # decoders.1.double_conv.conv2
+    # decoders.1.double_conv.conv2.conv
+    # decoders.1.double_conv.conv2.norm
+    # decoders.1.double_conv.conv2.norm.norm
+    # decoders.1.double_conv.conv2.act
+    # decoders.2
+    # decoders.2.upsample
+    # decoders.2.upsample.deconv
+    # decoders.2.upsample.norm
+    # decoders.2.upsample.norm.norm
+    # decoders.2.upsample.act
+    # decoders.2.double_conv
+    # decoders.2.double_conv.conv1
+    # decoders.2.double_conv.conv1.conv
+    # decoders.2.double_conv.conv1.norm
+    # decoders.2.double_conv.conv1.norm.norm
+    # decoders.2.double_conv.conv1.act
+    # decoders.2.double_conv.conv2
+    # decoders.2.double_conv.conv2.conv
+    # decoders.2.double_conv.conv2.norm
+    # decoders.2.double_conv.conv2.norm.norm
+    # decoders.2.double_conv.conv2.act
+    # decoders.3
+    # decoders.3.upsample
+    # decoders.3.upsample.deconv
+    # decoders.3.upsample.norm
+    # decoders.3.upsample.norm.norm
+    # decoders.3.upsample.act
+    # decoders.3.double_conv
+    # decoders.3.double_conv.conv1
+    # decoders.3.double_conv.conv1.conv
+    # decoders.3.double_conv.conv1.norm
+    # decoders.3.double_conv.conv1.norm.norm
+    # decoders.3.double_conv.conv1.act
+    # decoders.3.double_conv.conv2
+    # decoders.3.double_conv.conv2.conv
+    # decoders.3.double_conv.conv2.norm
+    # decoders.3.double_conv.conv2.norm.norm
+    # decoders.3.double_conv.conv2.act
+    # out_conv
+    # out_conv.conv3d
+    # out_conv.upsampling
+
+
+def dualstream_model_test():
+    kwargs = {
+        'model_name': 'dualname',
+        'network_type': 'single',
+        'input_nc': 1,
+        'output_nc': 1,
+        'domains': ('source', 'target'),
+        'init_channel_number': 16,
+        'verbose': True,
+        'weight_path': '/home/lf/data_fong/PROJECT/UMMS/traces/checkpoints/PhaseBaseLine/DualStream/mrus11211280_fold0_bs4_SingleBoth_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_3x400_0.6_baseline_1080Ti/latest_net_mrus11211280_fold0_bs4_SingleBoth_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_3x400_0.6_baseline_1080Ti.pth',
+        'local_gpu': 0
+    }
+
+    opt = SimpleNamespace(**kwargs)
+    device = torch.device('cuda:{}'.format(opt.local_gpu)) if opt.local_gpu >= 0 else torch.device('cpu')
+    network = define_dualstream(opt, device, domains=('source', 'target'))
+
+    network = load_weithts(network, opt.weight_path, device, name='umms')
+    network.eval()
+    print_module_name(network)
+    # [Network dualname] Total number of parameters : 4.119 M
+    # # encoders
+    # # encoders.0
+    # # encoders.0.basic_module
+    # # encoders.0.basic_module.conv1
+    # # encoders.0.basic_module.conv1.conv
+    # # encoders.0.basic_module.conv1.norm
+    # # encoders.0.basic_module.conv1.act
+    # # encoders.0.basic_module.conv2
+    # # encoders.0.basic_module.conv2.conv
+    # # encoders.0.basic_module.conv2.norm
+    # # encoders.0.basic_module.conv2.act
+    # # encoders.1
+    # # encoders.1.pooling
+    # # encoders.1.basic_module
+    # # encoders.1.basic_module.conv1
+    # # encoders.1.basic_module.conv1.conv
+    # # encoders.1.basic_module.conv1.norm
+    # # encoders.1.basic_module.conv1.act
+    # # encoders.1.basic_module.conv2
+    # # encoders.1.basic_module.conv2.conv
+    # # encoders.1.basic_module.conv2.norm
+    # # encoders.1.basic_module.conv2.act
+    # # encoders.2
+    # # encoders.2.pooling
+    # # encoders.2.basic_module
+    # # encoders.2.basic_module.conv1
+    # # encoders.2.basic_module.conv1.conv
+    # # encoders.2.basic_module.conv1.norm
+    # # encoders.2.basic_module.conv1.act
+    # # encoders.2.basic_module.conv2
+    # # encoders.2.basic_module.conv2.conv
+    # # encoders.2.basic_module.conv2.norm
+    # # encoders.2.basic_module.conv2.act
+    # # encoders.3
+    # # encoders.3.pooling
+    # # encoders.3.basic_module
+    # # encoders.3.basic_module.conv1
+    # # encoders.3.basic_module.conv1.conv
+    # # encoders.3.basic_module.conv1.norm
+    # # encoders.3.basic_module.conv1.act
+    # # encoders.3.basic_module.conv2
+    # # encoders.3.basic_module.conv2.conv
+    # # encoders.3.basic_module.conv2.norm
+    # # encoders.3.basic_module.conv2.act
+    # # encoders.4
+    # # encoders.4.pooling
+    # # encoders.4.basic_module
+    # # encoders.4.basic_module.conv1
+    # # encoders.4.basic_module.conv1.conv
+    # # encoders.4.basic_module.conv1.norm
+    # # encoders.4.basic_module.conv1.act
+    # # encoders.4.basic_module.conv2
+    # # encoders.4.basic_module.conv2.conv
+    # # encoders.4.basic_module.conv2.norm
+    # # encoders.4.basic_module.conv2.act
+    # # decoders
+    # # decoders.0
+    # # decoders.0.upsampling
+    # # decoders.0.basic_module
+    # # decoders.0.basic_module.conv1
+    # # decoders.0.basic_module.conv1.conv
+    # # decoders.0.basic_module.conv1.norm
+    # # decoders.0.basic_module.conv1.act
+    # # decoders.0.basic_module.conv2
+    # # decoders.0.basic_module.conv2.conv
+    # # decoders.0.basic_module.conv2.norm
+    # # decoders.0.basic_module.conv2.act
+    # # decoders.1
+    # # decoders.1.upsampling
+    # # decoders.1.basic_module
+    # # decoders.1.basic_module.conv1
+    # # decoders.1.basic_module.conv1.conv
+    # # decoders.1.basic_module.conv1.norm
+    # # decoders.1.basic_module.conv1.act
+    # # decoders.1.basic_module.conv2
+    # # decoders.1.basic_module.conv2.conv
+    # # decoders.1.basic_module.conv2.norm
+    # # decoders.1.basic_module.conv2.act
+    # # decoders.2
+    # # decoders.2.upsampling
+    # # decoders.2.basic_module
+    # # decoders.2.basic_module.conv1
+    # # decoders.2.basic_module.conv1.conv
+    # # decoders.2.basic_module.conv1.norm
+    # # decoders.2.basic_module.conv1.act
+    # # decoders.2.basic_module.conv2
+    # # decoders.2.basic_module.conv2.conv
+    # # decoders.2.basic_module.conv2.norm
+    # # decoders.2.basic_module.conv2.act
+    # # decoders.3
+    # # decoders.3.upsampling
+    # # decoders.3.basic_module
+    # # decoders.3.basic_module.conv1
+    # # decoders.3.basic_module.conv1.conv
+    # # decoders.3.basic_module.conv1.norm
+    # # decoders.3.basic_module.conv1.act
+    # # decoders.3.basic_module.conv2
+    # # decoders.3.basic_module.conv2.conv
+    # # decoders.3.basic_module.conv2.norm
+    # # decoders.3.basic_module.conv2.act
+    # # outconv
+    # # outconv.conv3d
+    # # outconv.upsampling
+    # # outconv.activation
+
+
+def model_test():
+    # single_model_test()
+    dualstream_model_test()
 
 
 def data_test():
     kwargs = {
         'dataset_name': 'mrusmr',
-        'dataroot': '../..//traces/datasets/MR-USviaFenster20-pre128',
+        'dataroot': '/home/lf/data_fong/PROJECT/UMMS/traces/datasets/MR-USvia20-full-11211280',
         'phase': 'test',
         'fold': 0,
         'custom': True,
         'preprocess': 'centercrop',
-        'crop_size': (96, 96, 80),
+        'crop_size': (112, 112, 80),
         'num_threads': 16,
-
         'local_gpu': 0
     }
     opt = SimpleNamespace(**kwargs)

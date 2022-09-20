@@ -31,7 +31,7 @@ weight_on_dir : false
 # data
 # ---------------------------------------------------------------------------- #
 # dataset
-dataset_name : 'mrusplusplus'
+dataset_name : 'mrus'
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
 serial_batches: True
 custom : true
@@ -61,15 +61,15 @@ up_interpolate: True
 # path
 # ---------------------------------------------------------------------------- #
 
-logs_dir : './traces/logs//DSBN'
-checkpoints_dir : './traces/checkpoints/DSBN'
-results_dir : './traces/results/DSBN'
+logs_dir : './traces/logs/PhaseBaseLine/DSBN'
+results_dir : './traces/results/PhaseBaseLine/DSBN'
+checkpoints_dir : './traces/checkpoints/PhaseBaseLine/DSBN'
 
 # ---------------------------------------------------------------------------- #
 # test
 # ---------------------------------------------------------------------------- #
 eval : True
-metric_names : ['basic_metrics', 'dice', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd', 'roisize', 'mravd']
+metric_names : ['basic_metrics', 'dice', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd', 'roisize']
 visual_names : ['volume', 'predict', 'label']
 
 

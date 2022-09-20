@@ -18,6 +18,7 @@ from utils.others.metrics import BinaryMetrics, SoftMetrics
 from utils.others.distributed_utils import reduce_mean
 from utils.others.utils import print_numpy
 from test import test_during_train
+from collections import OrderedDict, defaultdict
 
 ddp_logger = logging.getLogger('ddp_logger')
 # --config_path=configs/defaults/mrusmr_unet_train.yaml --use_config
@@ -93,8 +94,8 @@ class SingleModel(BaseModel):
             self.schedulers = [create_scheduler(opt, optimizer)[0] for optimizer in self.optimizers]
 
         self.visual_names = ['predict', 'label', 'volume']
-        self.metric_names = ['DC', 'ravd', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'assd', 'asd', 'ravd']    # , 'hd', 'hd95', 'assd', 'asd', 'ravd'
-        # 'hd' 'hd95' 'assd' 'asd'  'ravd'
+        self.metric_names = ['DC', 'ravd', 'recall', 'precision', 'accuracy', 'roisize']
+        self.test_metric_names = ['DC', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'assd', 'asd', 'ravd', 'roisize']
 
         self.get_metrics = BinaryMetrics()
         self.get_metrics_soft = SoftMetrics(smooth=0., eps=1e-6)
@@ -173,15 +174,11 @@ class SingleModel(BaseModel):
             self.predict = self.finally_activate(self.predict)
             self.is_activated = True
 
-        metric_names = copy.deepcopy(self.metric_names)
         if self.net_segment.training:
-            metric_names.remove('hd')
-            metric_names.remove('hd95')
-            metric_names.remove('assd')
-            metric_names.remove('asd')
-            metric_names.remove('ravd')
-        # 'hd95', 'assd', 'asd', 'ravd'
-        keys = tuple(metric_names) + args
+            metric_names = tuple(self.metric_names)
+        else:
+            metric_names = tuple(self.test_metric_names)
+        keys = metric_names + args
 
         predict = self.predict.clone().detach()
         label = self.label.clone().detach()
@@ -208,8 +205,9 @@ class SingleModel(BaseModel):
             'stride': (16, 16, 8),      # 3*3*3
             'no_augment': True,
             'visual_names': ('segment', 'label', 'origin_volume'),
-            'metric_names': ('DC', 'ravd', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'assd', 'asd', 'ravd')    #
+            'metric_names': tuple(self.test_metric_names)
         }
+        # ('DC', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'assd', 'asd', 'ravd')
         self.metric_dict, visuals = test_during_train(one_patient, self.net_segment,
                                                       SimpleNamespace(**kwargs), self.device)
 
@@ -223,6 +221,17 @@ class SingleModel(BaseModel):
             else:
                 warnings.warn('在滑窗测试中使用了错误的visual name:{}'.format(name))
                 ddp_logger.warning('在滑窗测试中使用了错误的visual name')
+
+    def get_current_metrics(self):
+        if self.net_segment.training:
+            metric_names = tuple(self.metric_names)
+        else:
+            metric_names = tuple(self.test_metric_names)
+        metrics_ret = OrderedDict()
+        for name in metric_names:
+            if isinstance(name, str) and name in self.metric_dict.keys():
+                metrics_ret[name] = self.metric_dict[name]
+        return metrics_ret
 
 
 def main():

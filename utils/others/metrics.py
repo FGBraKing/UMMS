@@ -66,7 +66,8 @@ class BinaryMetrics:
 
     @staticmethod
     def get_roisize(predict, target, **kwargs):
-        return target.sum() / target.size
+        # return target.sum() / target.size
+        return target.mean()
 
     def get_existence(self, predict, target, **kwargs):
         predict = predict > self.threshold
@@ -598,7 +599,8 @@ class SoftMetrics:
         return (TP + self.smooth) / (TP + FP + self.smooth + self.eps)
 
     def get_roisize(self, result, target, **kwargs):
-        return target.sum().item() / target.numel()
+        # return target.sum().item() / target.numel()
+        return target.mean().item()
 
     def __call__(self, result, target, *args, **kwargs):
         metrices = []

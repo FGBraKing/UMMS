@@ -142,6 +142,7 @@ _C.dataset_name = None
 _C.model_name = None
 _C.network_type = None
 _C.seed = 1008
+_C.fixed_seed = False
 _C.gpu_ids = None
 _C.visible_gpu = None
 _C.local_gpu = -1

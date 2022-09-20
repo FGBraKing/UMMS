@@ -8,7 +8,7 @@ from collections import OrderedDict
 from torch.autograd import Variable
 import itertools
 from utils.others.image_pool import ImagePool
-from .base_model import BaseModel
+from models.networks.base_model import BaseModel
 import torch.nn.functional as F
 import torch.nn as nn
 import math

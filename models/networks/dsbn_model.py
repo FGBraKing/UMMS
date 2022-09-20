@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from functools import partial
 from types import SimpleNamespace
 from collections import OrderedDict, defaultdict
-from models.modules.MultimodalSegmentation import ChilopodUnet
+from models.modules.MultimodalSegmentation.DomainSpecificNormalization import ChilopodUnet
 from models.networks.base_model import BaseModel
 from models.loss import losses, get_loss_criterion
 from models.optim import create_optimizer, create_optimizer_v2
@@ -21,6 +21,7 @@ from utils.others.utils import print_numpy
 
 
 ddp_logger = logging.getLogger('ddp_logger')
+message_logger = logging.getLogger('train_message_log')
 
 
 def define_model(opt, device, domains=None):
@@ -100,8 +101,9 @@ class DsbnModel(BaseModel):
 
         # specify the images you want to save/display.
         self.visual_names = ['volume', 'predict', 'label']
-        self.metric_names = ['DC', 'recall', 'precision', 'ravd', 'roisize']
-        # 'hd' 'hd95' 'assd' 'asd'  'specificity', 'accuracy',
+        self.metric_names = ['DC', 'ravd', 'recall', 'precision', 'accuracy', 'roisize']
+        self.test_metric_names = ['DC', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd',
+                                  'ravd', 'roisize']
 
         self.get_metrics = BinaryMetrics()
         self.get_metrics_soft = SoftMetrics(smooth=0., eps=1e-6)
@@ -169,14 +171,16 @@ class DsbnModel(BaseModel):
         if domain == "target":
             predict = self.target_predict
             label = self.target_label
+            weight = 1.0
         else:
             predict = self.source_predict
             label = self.source_label
+            weight = 1.2
 
         with self.autocast_context():
             self.loss_item_dict, self.loss_routine = self.criterionRoutine(predict, label)
             self.loss_regular = self.criterionRegular(self.net_umms.parameters())
-            self.loss_total = self.loss_routine + 1e-4 * self.loss_regular
+            self.loss_total = weight*self.loss_routine + 1e-4 * self.loss_regular
         self.loss_total = self.loss_total / self.opt.gradient_accumulation_k_step
 
         if self.opt.use_mixed_precision:
@@ -257,12 +261,15 @@ class DsbnModel(BaseModel):
                                                             self.target_label.clone().detach(), 'target')
 
     def compute_metrics_base(self, predict, label, domain, *args, **kwargs):
-        keys = tuple(self.metric_names) + args
+        if self.net_umms.training:
+            metric_names = tuple(self.metric_names)
+        else:
+            metric_names = tuple(self.test_metric_names)
+        keys = metric_names + args
 
         predict = (predict > 0.5).float()
         label = (label > 0.5).float()
-        metrics = self.get_metrics_soft(predict, label, *self.metric_names,
-                                        *args, **kwargs, voxelspacing=self.spacing[domain])
+        metrics = self.get_metrics_soft(predict, label, *keys, **kwargs, voxelspacing=self.spacing[domain])
 
         if self.opt.DDP:
             for i in range(len(metrics)):
@@ -274,11 +281,19 @@ class DsbnModel(BaseModel):
         return metric_dict
 
     def get_current_metrics(self):
+        if self.net_umms.training:
+            metric_names = tuple(self.metric_names)
+        else:
+            metric_names = tuple(self.test_metric_names)
         metrics_ret = OrderedDict()
-        for name in self.metric_names:
+        for name in metric_names:
             if isinstance(name, str):
                 metrics_ret['source'+name] = self.metric_dict_source[name]
                 metrics_ret['target'+name] = self.metric_dict_target[name]
+        metrics_ret['stvd'] = self.source_predict.detach().sum() - self.target_predict.detach().sum()
+        metrics_ret['svd'] = self.source_predict.detach().sum() - self.source_label.detach().sum()
+        metrics_ret['tvd'] = self.target_predict.detach().sum() - self.target_label.detach().sum()
+        # print(self.source_predict.detach().max(), self.source_predict.detach().min())
         return metrics_ret
 
     def get_current_visuals(self):

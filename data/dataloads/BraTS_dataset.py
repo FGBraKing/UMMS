@@ -30,6 +30,7 @@ def npy_bra_loader(path, num=-1):
     else:
         return img
 
+
 # dataset-specific, you also can take it to loader
 def get_pre_transform():
     transform_list = []

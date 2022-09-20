@@ -21,6 +21,7 @@ from utils.others.utils import print_numpy
 
 
 ddp_logger = logging.getLogger('ddp_logger')
+message_logger = logging.getLogger('train_message_log')
 
 
 def define_model(opt, device, domains=None):
@@ -145,8 +146,8 @@ class DualStreamModel(BaseModel):
 
         # specify the images you want to save/display.
         self.visual_names = ['volume', 'predict', 'label']
-        self.metric_names = ['DC', 'recall', 'precision', 'ravd', 'roisize']
-        # 'hd' 'hd95' 'assd' 'asd'  'specificity', 'accuracy',
+        self.metric_names = ['DC', 'ravd', 'recall', 'precision', 'accuracy', 'roisize']
+        self.test_metric_names = ['DC', 'recall', 'precision', 'specificity', 'accuracy', 'hd', 'hd95', 'asd', 'assd', 'ravd', 'roisize']
 
         self.get_metrics = BinaryMetrics()
         self.get_metrics_soft = SoftMetrics(smooth=0., eps=1e-6)
@@ -179,7 +180,10 @@ class DualStreamModel(BaseModel):
         self.target_label = inputs['us_label'].to(self.device)     # bs C D H W, C=1
         self.volume_path = {'source': inputs['mr_volume_path'], 'target': inputs['us_volume_path']}
         self.label_path = {'source': inputs['mr_label_path'],  'target': inputs['us_label_path']}
-        self.spacing = {'source': inputs['mr_spacing'].mean(0).tolist(), 'target': inputs['us_spacing'].mean(0).tolist()}
+        self.spacing = {'source': inputs['mr_spacing'].mean(0).tolist(),
+                        'target': inputs['us_spacing'].mean(0).tolist()}
+        # message_logger.info('source size: {:10.4f}, target size: {:10.4f}'.format(self.source_label.mean().item(),
+        #                                                                          self.target_label.mean().item()))
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
@@ -203,7 +207,7 @@ class DualStreamModel(BaseModel):
             #                                                                self.target_predict, self.target_label)
             self.loss_item_dict, self.loss_routine = self.criterionRoutine(predict, label)
             self.loss_regular = self.criterionRegular(self.net_umms.parameters())
-            self.loss_total = self.loss_routine + 1e-4 * self.loss_regular
+            self.loss_total = self.loss_routine + 1e-4*self.loss_regular
         self.loss_total = self.loss_total / self.opt.gradient_accumulation_k_step
 
         if self.opt.use_mixed_precision:
@@ -273,12 +277,15 @@ class DualStreamModel(BaseModel):
                                                             self.target_label.clone().detach(), 'target')
 
     def compute_metrics_base(self, predict, label, domain, *args, **kwargs):
-        keys = tuple(self.metric_names) + args
+        if self.net_umms.training:
+            metric_names = tuple(self.metric_names)
+        else:
+            metric_names = tuple(self.test_metric_names)
+        keys = metric_names + args
 
         predict = (predict > 0.5).float()
         label = (label > 0.5).float()
-        metrics = self.get_metrics_soft(predict, label, *self.metric_names,
-                                        *args, **kwargs, voxelspacing=self.spacing[domain])
+        metrics = self.get_metrics_soft(predict, label, *keys, **kwargs, voxelspacing=self.spacing[domain])
 
         if self.opt.DDP:
             for i in range(len(metrics)):
@@ -290,11 +297,19 @@ class DualStreamModel(BaseModel):
         return metric_dict
 
     def get_current_metrics(self):
+        if self.net_umms.training:
+            metric_names = tuple(self.metric_names)
+        else:
+            metric_names = tuple(self.test_metric_names)
         metrics_ret = OrderedDict()
-        for name in self.metric_names:
+        for name in metric_names:
             if isinstance(name, str):
                 metrics_ret['source'+name] = self.metric_dict_source[name]
                 metrics_ret['target'+name] = self.metric_dict_target[name]
+        metrics_ret['stvd'] = self.source_predict.detach().sum() - self.target_predict.detach().sum()
+        metrics_ret['svd'] = self.source_predict.detach().sum() - self.source_label.detach().sum()
+        metrics_ret['tvd'] = self.target_predict.detach().sum() - self.target_label.detach().sum()
+
         return metrics_ret
 
     def get_current_visuals(self):

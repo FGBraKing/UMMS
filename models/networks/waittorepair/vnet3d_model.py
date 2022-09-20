@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.cuda.amp
 
 from types import SimpleNamespace
-from .base_model import BaseModel
+from models.networks.base_model import BaseModel
 from models.modules import VNet
 from models.loss import losses, get_loss_criterion
 from models.auxiliary_funs import get_init_func, get_activation

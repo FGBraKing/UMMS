@@ -4,10 +4,9 @@ import torch.distributed
 import torch.nn as nn
 import torch.cuda.amp
 from models.modules.MultimodalSegmentation.SingleUnetWithFuse import SingleUnetWithFuse
-from models.networks.standardwithprior_model import StandardWithPriorModel
+from models.networks.waittorepair.standardwithprior_model import StandardWithPriorModel
 
-from models.auxiliary_funs import get_init_func, get_activation
-
+from models.auxiliary_funs import get_init_func
 
 ddp_logger = logging.getLogger('ddp_logger')
 

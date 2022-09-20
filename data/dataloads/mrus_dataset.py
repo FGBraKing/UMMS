@@ -16,6 +16,11 @@ from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_
 from utils.others.img_io import show_array_3d, show_volume_label, show_array_histogram, show_pired_histogram
 from utils.others.metrics import BinaryMetrics
 from data.dataloads.base_dataset import AugmentationIndex
+from skimage.transform import resize
+from scipy.ndimage.interpolation import map_coordinates, zoom
+import threading
+import psutil
+from utils.others.random_manage import RANDOMMANAGE
 
 
 def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
@@ -101,6 +106,38 @@ def check_data_info(dataroot):
     print_data_describe(mr_paths)
 
 
+def get_scale_rate(ndim=3, scale_range=(0.7, 1.3),
+                   p_independent_scale_per_axis=1, independent_scale_for_each_axis=False):
+    if independent_scale_for_each_axis and np.random.uniform() < p_independent_scale_per_axis:
+        sc = []
+        for _ in range(ndim):
+            # 保证放大和缩小的概率各半
+            if np.random.random() < 0.5 and scale_range[0] < 1:
+                sc.append(np.random.uniform(scale_range[0], 1))
+            else:
+                sc.append(np.random.uniform(max(scale_range[0], 1), scale_range[1]))
+    else:
+        if np.random.random() < 0.5 and scale_range[0] < 1:
+            sc = np.random.uniform(scale_range[0], 1)
+        else:
+            sc = np.random.uniform(max(scale_range[0], 1), scale_range[1])
+    if not isinstance(sc, (list, tuple)):
+        sc = np.array([sc] * ndim)
+    else:
+        sc = np.array(sc)
+    return sc
+
+
+def random_scale(volume, mask, order_data=3, order_seg=1, zoom_factors=(1, 1, 1), p_scale_per_sample=0.25):
+    if np.random.uniform() < p_scale_per_sample:
+        volume_trans = zoom(volume, zoom_factors, order=order_data, mode='constant', cval=0.0, prefilter=True)
+        mask_trans = zoom(mask, zoom_factors, order=order_seg, mode='nearest', cval=0, prefilter=True)
+        mask_trans = np.where(mask_trans > 0.5, 1., 0.)
+        return volume_trans, mask_trans
+
+    return volume, mask
+
+
 # 先选样本，在线扩增。batch内样本不重叠
 class MrusDataset(NIIDataset):
     def __init__(self, opt):
@@ -112,6 +149,11 @@ class MrusDataset(NIIDataset):
         if opt.fake_shufflt:
             random.shuffle(self.us_paths)
 
+        if 'synscale' in opt.preprocess:
+            self.fix_scale = True
+        else:
+            self.fix_scale = False
+
         self.data_size = max(self.us_size, self.mr_size)
 
         self.pre_transform = get_pre_transform(opt)
@@ -120,6 +162,9 @@ class MrusDataset(NIIDataset):
         self.to_tensor = ToTensor(expand_dims=True)
 
     def __getitem__(self, index):
+        # print('process id: ', os.getpid(),
+        #       'number of thread: ', psutil.Process(os.getpid()).num_threads(),
+        #       ' threading id: ', threading.current_thread(), ' dateset index: ', index)
 
         index_used = self._get_used_index(index)
 
@@ -140,6 +185,12 @@ class MrusDataset(NIIDataset):
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         mr_volume = self._apply_pre_transform(mr_volume)
         us_volume = self._apply_pre_transform(us_volume)
+        # 更新数据增强，保证每个模态的放缩比例一致
+        if self.fix_scale and np.random.uniform() < 0.25:
+            scale_all = get_scale_rate(3, (0.7, 1.3),
+                                       p_independent_scale_per_axis=1, independent_scale_for_each_axis=False)
+            mr_volume, mr_label = random_scale(mr_volume, mr_label, 3, 1, scale_all, p_scale_per_sample=1.0)
+            us_volume, us_label = random_scale(us_volume, us_label, 3, 1, scale_all, p_scale_per_sample=1.0)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
         mr_volume, mr_label = self._apply_transform(mr_volume, mr_label)
         us_volume, us_label = self._apply_transform(us_volume, us_label)
@@ -212,17 +263,16 @@ class MrusDataset(NIIDataset):
 
     def get_data_roi_rate(self):
         from utils.others.utils import get_foreground_shape
-        image_size = 112*112*80
         for i in range(self.data_size):
             mr_path = self.mr_paths[i]
             us_path = self.us_paths[i]
             mr_label = self.loader(mr_path['label'])
             us_label = self.loader(us_path['label'])
-            assert mr_label.size == us_label.size == image_size
+            assert mr_label.size == us_label.size
             mr_spacing = sitk.ReadImage(mr_path['volume']).GetSpacing()
             us_spacing = sitk.ReadImage(us_path['volume']).GetSpacing()
-            mr_area_rate = mr_label.sum() / image_size
-            us_area_rate = us_label.sum() / image_size
+            mr_area_rate = mr_label.mean()
+            us_area_rate = us_label.mean()
             mr_roi_range = tuple(get_foreground_shape(mr_label, number=10))
             us_roi_range = tuple(get_foreground_shape(us_label, number=10))
             print(i+1, os.path.basename(mr_path['label']).split('.')[0],

@@ -1,10 +1,10 @@
 import torch
 import itertools
 from utils.others.image_pool import ImagePool
-from .base_model import BaseModel
+from models.networks.base_model import BaseModel
 from models.modules.style_transfer.two_d.cycle_gan_network import ResnetGenerator, UnetGenerator, NLayerDiscriminator, PixelDiscriminator
 from models.auxiliary_funs import get_norm_layer, init_net
-from ..loss import losses
+from models.loss import losses
 
 
 def define_D(input_nc,

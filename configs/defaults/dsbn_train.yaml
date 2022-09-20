@@ -2,24 +2,29 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrus11211280_fold4_bs4_dsbn_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6'
+name : 'mrus11211280_fold3_bs4_dsbn_ch16_combo_p0_s1.2t1_r1d1.2_1.5_l2_1e-4_adam_1e-4_poly_2x400_0.6'
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
 prefix: ~
-suffix : 'AugPlusPlusRespective'
+suffix : 'basic_respective_baseline'
 # dsbn || AugPlusPlus  AugProxy    25
 
-fold : 4
+fold : 3
 visible_gpu : !!str "'3'"
-proxy_two : False
 optimize_respective : True
 
-preprocess :  'elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+preprocess :  'elastic_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
             # 'elastic_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
             # 'elastic_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+            #            'synscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
 
-dataset_name : 'mrusplusplus'
+dataset_name : 'mrus'
+# mrusplusplus
+#proxy_two : False
+
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
 batch_size : 4
+num_threads : 1
+#fixed_seed : False
 gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
 DEBUG : False
 verbose : false
@@ -29,17 +34,19 @@ model_name : 'dsbn'
 network_type : 'dsbn'
 init_channel_number : 16
 conv_order : 'cbl'
-loss_opt : 'using custom, 1*bdc+1*bce, pos-weight=1, 1e-4_l2'
+loss_opt : 'using custom, p0,s1.2t1,1*bdc+1.2*bce, pos-weight=1.5, 1e-4_l2'
 optimizer_name : 'adam'
 lr : 1e-4
 
 lr_policy : 'poly'
-lr_cycle_num : 3
+lr_cycle_num : 2
 lr_cycle_decay : 0.6
 
 decay_epochs : 100
 decay_rate : 0.5
 # 在poly学习率策略中，decay_rate作为power使用
+
+num_epochs : 400
 
 epoch_start : 1
 continue_train : false
@@ -81,8 +88,8 @@ mirror_axes: [0, 1, 2]
 
 # --dataloader
 # batch_size : 1
+#num_threads : 8
 data_shuffle : true
-num_threads : 8
 drop_last : False
 # ----------------------------------------------------------------------------------- #
 # 网络参数：包括模块超参数和初始化参数
@@ -132,7 +139,7 @@ lr_cycle_mul : 1.0
 lr_cycle_limit : 5
 #cooldown_epochs : 10
 
-#min_lr : 1e-7
+min_lr : 1e-6
 #decay_epochs : 100
 #decay_rate : 0.3
 #lr_k_decay : 1.0
@@ -173,13 +180,13 @@ deterministic : True
 #suffix : ''
 #verbose : true
 # --files path
-logs_dir : './traces/logs/DSBN'
-results_dir : './traces/results/DSBN'
-checkpoints_dir : './traces/checkpoints/DSBN'
+logs_dir : './traces/logs/PhaseBaseLine/DSBN'
+results_dir : './traces/results/PhaseBaseLine/DSBN'
+checkpoints_dir : './traces/checkpoints/PhaseBaseLine/DSBN'
 optimizer_path : ~
 # --basic train
 #epoch_start : 1
-num_epochs : 30
+#num_epochs : 30
 #continue_train : false
 # --network saving and loading
 #save_epoch_start : 1
@@ -191,7 +198,7 @@ save_by_iter : false
 display_freq : 12
 print_freq : 1
 plot_freq : 1
-val_epoch_freq : 1
+val_epoch_freq : 10
 test_on_train : true
 # --visualer
 with_tensorboard : False

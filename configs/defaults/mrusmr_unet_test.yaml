@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrusmr11211280_patch_fold4_bs16_single_ch16_combo_1_1_1_l2_1e-4_adam_2e-4_poly_3x300_0.6_cropstride222_OrdinaryAug_Tesla'
+name : 'mrusmr11211280_patch_fold0_bs4_single_ch32_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_2x400_0.6'
 phase : 'test'
 test_name : 'crop969680_slide161616_nopad_noaug_nogauus_postprocess'
 
@@ -29,7 +29,7 @@ phase_list : ['train', 'test']
 # ---------------------------------------------------------------------------- #
 # dataset
 dataset_name : 'mrusmr'
-fold : 4
+fold : 0
 
 crop_size : [96, 96, 80]
 target_size : [96, 96, 80]
@@ -52,12 +52,12 @@ conv_order : 'cbl'
 # ---------------------------------------------------------------------------- #
 dataroot :  './traces/datasets/MR-USvia20-full-11211280'
 # MR-USvia20-full-11211280  MR-USviaFenster20-pre128
-weight_name : 'latest_net_mrusmr11211280_patch_fold4_bs16_single_ch16_combo_1_1_1_l2_1e-4_adam_2e-4_poly_3x300_0.6_cropstride222_OrdinaryAug_Tesla.pth'
-weight_dir  : './traces/checkpoints/SingleModel/mrusmr11211280_patch_fold4_bs16_single_ch16_combo_1_1_1_l2_1e-4_adam_2e-4_poly_3x300_0.6_cropstride222_OrdinaryAug_Tesla'
+weight_name : 'latest_net_mrusmr11211280_patch_fold0_bs16_single_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_2x400_0.6_baseline_2080Ti.pth'
+weight_dir  : './traces/checkpoints/PhaseBaseLine/SinglePatch/mrusmr11211280_patch_fold0_bs16_single_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_2x400_0.6_baseline_2080Ti'
 weight_on_dir : false
-logs_dir : './traces/logs/SingleModel'
-checkpoints_dir : './traces/checkpoints/SingleModel'
-results_dir : './traces/results/SingleModel'
+logs_dir : './traces/logs/PhaseBaseLine/SinglePatch'
+checkpoints_dir : './traces/checkpoints/PhaseBaseLine/SinglePatch'
+results_dir : './traces/results/PhaseBaseLine/SinglePatch'
 # ---------------------------------------------------------------------------- #
 # test
 # ---------------------------------------------------------------------------- #

@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrusmr11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_TITAN'
+name : 'mrusmr11211280_whole_fold0_bs4_single_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_2x400_0.6_2080Ti'
 phase : 'test'
 predict_name : 'postprocess'
 
@@ -13,7 +13,7 @@ visible_gpu :  '0,1,2,3'
 
 revert : false
 do_connected_component : true
-minimum_valid_object_size : 1000
+minimum_valid_object_size : 40
 
 save_visuals : True
 deterministic : True
@@ -28,7 +28,7 @@ phase_list : ['train', 'test']
 # ---------------------------------------------------------------------------- #
 # dataset
 dataset_name : 'mrusmr'
-fold : 4
+fold : 0
 custom : true
 preprocess : ''
 #   'centercrop'
@@ -55,14 +55,14 @@ conv_order : 'cbl'
 # path
 # ---------------------------------------------------------------------------- #
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
-# MR-USviaFenster20-pre12812896
-weight_path : './traces/checkpoints/SingleModel/mrusmr11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_TITAN/latest_net_mrusmr11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_TITAN.pth'
-weight_dir : './traces/checkpoints/SingleModel/mrusmr11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_TITAN'
+
+weight_path : './traces/checkpoints/PhaseBaseLine/SinglePatch/mrusmr11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_1080Ti/latest_net_mrusus11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_1080Ti.pth'
+weight_dir : './traces/checkpoints/PhaseBaseLine/SinglePatch/mrusmr11211280_whole_fold4_bs4_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x300_0.6_OrdinaryAug_1080Ti'
 weight_on_dir : false
 #
-logs_dir : './traces/logs/SingleModel'
-checkpoints_dir : './traces/checkpoints/SingleModel'
-results_dir : './traces/results/SingleModel'
+logs_dir : './traces/logs/PhaseBaseLine/SinglePatch'
+checkpoints_dir : './traces/checkpoints/PhaseBaseLine/SinglePatch'
+results_dir : './traces/results/PhaseBaseLine/SinglePatch'
 
 # ---------------------------------------------------------------------------- #
 # test

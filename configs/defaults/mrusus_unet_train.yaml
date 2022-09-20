@@ -2,8 +2,8 @@
 # ------------------------------------------------------------------------------------------------ #
 # modified
 # ------------------------------------------------------------------------------------------------ #
-name : 'mrusus11211280_patch_fold4_bs16_single_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_2x40_0.6'
-suffix : 'cropstride222_Augplus'
+name : 'mrusus11211280_patch_fold4_bs16_single_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_2x400_0.6'
+suffix : 'baseline'
 
 # 规则：数据参数+网络参数+损失函数+优化器+学习率策略+（加速策略）+（其他）
 # Tesla V100-DGXS-32GB\NVIDIA GeForce RTX 2080 Ti\NVIDIA GeForce GTX 1080 Ti\ NVIDIA TITAN Xp
@@ -12,12 +12,13 @@ fold : 4
 batch_size : 16
 # 相比原来的mrus_patch只改了数据集和crop_stride和randomcropwithstride
 gpu_ids : [0, 1, 2, 3, 4, 5, 6, 7]
-visible_gpu : !!str "'4'"
+visible_gpu : !!str "'0'"
 DEBUG : False
 
-preprocess : 'elastic_randomcropwithstride_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+preprocess : 'randomcropwithstride_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate'
 # 'elastic_randomcropwithstride_randomscale_randomrotate_centercrop_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
 # 'elastic_randomcropwithstride_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate_gammatransform'
+# 'randomcropwithstride_randomscale_randomrotate_centercrop_rot90_mirror_gaussianNoise_GaussianBlur_BrightnessMultiplicative_contrast_simulate'
 # randomcrop_rot90_mirror
 init_channel_number : 16
 conv_order : 'cbl'
@@ -31,7 +32,7 @@ lr_policy : 'poly'
 lr_cycle_num : 2
 lr_cycle_decay : 0.6
 
-num_epochs : 40
+num_epochs : 400
 decay_epochs : 10
 decay_rate : 0.5
 # 在poly学习率策略中，decay_rate作为power使用
@@ -53,7 +54,7 @@ phase : 'train'
 custom : true
 crop_size : [80, 80, 64]
 target_size : [80, 80, 64]
-crop_stride : [2, 2, 2]     # 4, 4, 2  8 8 8
+crop_stride : [1, 1, 1]     # 4, 4, 2  8 8 8
 #order_data: 3
 #order_seg: 1
 #elastic_alpha : [0., 70]
@@ -152,7 +153,7 @@ dist_url : 'tcp://127.0.0.1:52001'
 # ---------------------------------------------------------------------------- #
 # --basic
 #name : 'mrusmr_unet3d_969632_bs12_ch32_kaiming_combo_1.0_1.0_adam_2e-4_cosine_1.0_0.3_2x500_warmup_10_1e-5'
-dataset_name : 'mrususplus'
+dataset_name : 'mrusus'
 # 'mrususplus'  mrusus
 model_name : 'single'
 #seed : 1008
@@ -167,9 +168,9 @@ deterministic : True
 #suffix : ''
 verbose : true
 # --files path
-logs_dir : './traces/logs/SingleBaseLine'
-results_dir : './traces/results/SingleBaseLine'
-checkpoints_dir : './traces/checkpoints/SingleBaseLine'
+logs_dir : './traces/logs/PhaseBaseLine/SinglePatch'
+results_dir : './traces/results/PhaseBaseLine/SinglePatch'
+checkpoints_dir : './traces/checkpoints/PhaseBaseLine/SinglePatch'
 optimizer_path : ~
 # --basic train
 #epoch_start : 1

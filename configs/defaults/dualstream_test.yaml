@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------- #
 # basic
 # ---------------------------------------------------------------------------- #
-name : 'mrus11211280_fold4_bs4_SingleTarget_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlus_TITAN'
+name : 'mrus11211280_fold1_bs4_DualStreamV1_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_3x400_0.6_2080Ti'
 phase : 'test'
 test_name : 'centercrop_postprocess'
 
@@ -19,9 +19,9 @@ deterministic : True
 DEBUG : False
 verbose : false
 
-fold : 4
-network_type : 'single'
-weight_name : 'latest_net_mrus11211280_fold4_bs4_SingleTarget_ch16_combo_1_1_1_l2_1e-4_adam_1e-4_poly_3x30_0.6_AugPlusPlus_TITAN.pth'
+fold : 1
+network_type : 'V1'
+weight_name : 'latest_net_mrus11211280_fold1_bs4_DualStreamV1_ch16_combo_1_1_1.5_l2_1e-4_adam_1e-4_poly_3x400_0.6_2080Ti.pth'
 weight_on_dir : false
 
 #single : false
@@ -32,7 +32,7 @@ weight_on_dir : false
 # data
 # ---------------------------------------------------------------------------- #
 # dataset
-dataset_name : 'mrusplusplus'
+dataset_name : 'mrus'
 dataroot : './traces/datasets/MR-USvia20-full-11211280'
 serial_batches: True
 custom : true
@@ -62,9 +62,13 @@ up_interpolate: True
 # path
 # ---------------------------------------------------------------------------- #
 
-logs_dir : './traces/logs/SingleOne'
-checkpoints_dir : './traces/checkpoints/SingleOne'
-results_dir : './traces/results/SingleOne'
+#logs_dir : './traces/logs/SingleOne'
+#checkpoints_dir : './traces/checkpoints/SingleOne'
+#results_dir : './traces/results/SingleOne'
+logs_dir : './traces/logs/PhaseBaseLine/DualStream'
+results_dir : './traces/results/PhaseBaseLine/DualStream'
+checkpoints_dir : './traces/checkpoints/PhaseBaseLine/DualStream'
+
 # SingleBoth DualStream
 # ---------------------------------------------------------------------------- #
 # test

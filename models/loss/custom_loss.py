@@ -21,9 +21,9 @@ class CustomLoss(nn.Module):
         eps = 5e-4 if use_mixed_precision else 1e-7
 
         self.w_region = 1.0       #
-        self.w_distribution = 1.0
+        self.w_distribution = 1.2
 
-        self.pos_weight = 1.0   # Few samples
+        self.pos_weight = 1.5   # Few samples
 
         self.gamma = 2          # hard sample
 
@@ -40,19 +40,21 @@ class CustomLoss(nn.Module):
                                              smooth=region_smooth, use_sigmoid=True, eps=eps, reduction=reduction)
 
     def forward(self, output, target):
-        tversky_loss = self.tverskyloss(output, target)
+        # tversky_loss = self.tverskyloss(output, target)
         dice_loss = self.diceloss(output, target)
         # dice_loss = -torch.log(1 - dice_loss)
 
         wbce_loss = self.wbce(output, target)
-        focal_loss = self.focal(output, target)
+        # focal_loss = self.focal(output, target)
 
         loss = self.w_region * dice_loss + self.w_distribution * wbce_loss
 
-        return {'dice': dice_loss,
-                # 'tversky': tversky_loss,
-                'wbce': wbce_loss,
-                'focal': focal_loss}, loss
+        return {
+                   'dice': dice_loss,
+                   # 'tversky': tversky_loss,
+                   'wbce': wbce_loss,
+                   # 'focal': focal_loss
+               }, loss
 
 
 class RegularLoss(nn.Module):
@@ -79,14 +81,14 @@ class CustomMultiModalLoss(nn.Module):
         distribution_smooth = 0.1
         region_smooth = 10
 
-        self.source_weight = 1.5
-        self.target_weight = 1.
         self.prior_weight = 0.
+        self.source_weight = 1.2
+        self.target_weight = 1.
 
         self.w_region = 1.0       #
-        self.w_distribution = 1.5
+        self.w_distribution = 1.2
 
-        self.pos_weight = 1.0   # Few samples
+        self.pos_weight = 1.5   # Few samples
 
         self.gamma = 2          # hard sample
 
@@ -105,7 +107,7 @@ class CustomMultiModalLoss(nn.Module):
 
         self.sizeloss = SizeConstrainedNormLoss(True, 0.02, eps=eps)
 
-        self.sizelossV1 = SizeConstrainedNormLoss(True, 0.15, eps=eps)
+        self.sizelossV1 = SizeConstrainedLoss(True, 0.15, eps=eps)
 
     def base_forward(self, output, target, prefix='', sample_weights=None):
         tversky_loss = self.tverskyloss(output, target)

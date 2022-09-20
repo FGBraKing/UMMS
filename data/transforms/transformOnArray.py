@@ -26,6 +26,8 @@ from data.transforms.transforms import Compose, ComposeForSample
 from data.transforms.transformOnSample import RandomFlip, RandomCrop, RandomRotate, CenterCrop, \
     RandomRotate90, RandomScale, resize_3d
 
+from utils.others.random_manage import RANDOMMANAGE
+
 
 # ----------------------------------------------function----------------------------------------------
 # --------------------------------custom
@@ -209,8 +211,8 @@ class NormalizeRange:
 
 
 class RandomGaussianNoise:
-    def __init__(self, random_state, sigma_range=(0., 0.1), alpha_range=0., execution_probability=0.15, ):
-        self.random_state = random_state
+    def __init__(self, sigma_range=(0., 0.1), alpha_range=0., execution_probability=0.15, ):
+        self.random_state = RANDOMMANAGE.get_smart_numpy_random()
         if isinstance(alpha_range, (int, float)):
             self.alpha_min = self.alpha_max = alpha_range
         elif isinstance(alpha_range, (list, tuple)):
@@ -371,9 +373,11 @@ class SimulateLowResolutionTransform:
         order_upsample:
     """
 
-    def __init__(self, zoom_range=(0.5, 1), per_channel=False, p_per_channel=1.,
+    def __init__(self, random_state, zoom_range=(0.5, 1), per_channel=False, p_per_channel=1.,
                  channels=None, order_downsample=1, order_upsample=0, p_per_sample=1.,
                  ignore_axes=None, with_channel=False):
+        # self.random_state = RANDOMMANAGE.get_smart_numpy_random()
+        self.random_state = random_state
         self.order_upsample = order_upsample
         self.order_downsample = order_downsample
         self.channels = channels
@@ -385,7 +389,7 @@ class SimulateLowResolutionTransform:
         self.with_channel = with_channel
 
     def __call__(self, m):
-        if np.random.uniform() < self.p_per_sample:
+        if self.random_state.uniform() < self.p_per_sample:
             if not self.with_channel:
                 m = np.expand_dims(m, axis=0)
             m = augment_linear_downsampling_scipy(data_sample=m,
@@ -403,11 +407,11 @@ class SimulateLowResolutionTransform:
 
 # ------------------------------------- noise transforms
 class RicianNoiseTransform:
-    def __init__(self, random_state, noise_variance=(0, 0.1), p_per_sample=1, with_channel=False):
+    def __init__(self, noise_variance=(0, 0.1), p_per_sample=1, with_channel=False):
         self.p_per_sample = p_per_sample
         self.noise_variance = noise_variance
         self.with_channel = with_channel
-        self.random_state = random_state
+        self.random_state = RANDOMMANAGE.get_smart_numpy_random()
 
     def __call__(self, m):
         if self.random_state.uniform() < self.p_per_sample:
@@ -424,6 +428,7 @@ class GaussianNoiseTransform:
         self.noise_variance = noise_variance
         self.with_channel = with_channel
         self.random_state = random_state
+        # self.random_state = RANDOMMANAGE.get_smart_numpy_random()
 
     def __call__(self, m):
         if self.random_state.uniform() < self.p_per_sample:
@@ -440,6 +445,7 @@ class GaussianBlurTransform:
     def __init__(self, random_state, blur_sigma=(1, 5), different_sigma_per_channel=True,
                  p_per_channel=1., p_per_sample=1., with_channel=False):
         self.random_state = random_state
+        # self.random_state = RANDOMMANAGE.get_smart_numpy_random()
         self.p_per_sample = p_per_sample
         self.different_sigma_per_channel = different_sigma_per_channel
         self.p_per_channel = p_per_channel
@@ -463,7 +469,7 @@ class GaussianBlurTransform:
 
 
 class BlankSquareNoiseTransform:
-    def __init__(self, random_state, squre_size=20, n_squres=1, noise_val=(0, 0),
+    def __init__(self, squre_size=20, n_squres=1, noise_val=(0, 0),
                  channel_wise_n_val=False, square_pos=None,
                  p_per_sample=1, with_channel=False):
         '''
@@ -483,7 +489,7 @@ class BlankSquareNoiseTransform:
         self.channel_wise_n_val = channel_wise_n_val
         self.square_pos = square_pos
         self.with_channel = with_channel
-        self.random_state = random_state
+        self.random_state = RANDOMMANAGE.get_smart_numpy_random()
 
         if not self.with_channel:
             self.channel_wise_n_val = False
@@ -504,7 +510,7 @@ class BlankSquareNoiseTransform:
 
 
 class BlankRectangleTransform:
-    def __init__(self, random_state, rectangle_size, rectangle_value, num_rectangles, force_square=False,
+    def __init__(self, rectangle_size, rectangle_value, num_rectangles, force_square=False,
                  p_per_sample=0.5, p_per_channel=0.5,
                  with_channel=False):
         """
@@ -548,7 +554,7 @@ class BlankRectangleTransform:
         self.p_per_sample = p_per_sample
         self.p_per_channel = p_per_channel
         self.with_channel = with_channel
-        self.random_state = random_state
+        self.random_state = RANDOMMANAGE.get_smart_numpy_random()
 
         # intensity value
         if np.isscalar(rectangle_value):
@@ -556,7 +562,7 @@ class BlankRectangleTransform:
         elif callable(rectangle_value):
             self.color_fn = lambda x: rectangle_value(x)
         elif isinstance(rectangle_value, (tuple, list)):
-            self.color_fn = lambda x: np.random.uniform(*rectangle_value)
+            self.color_fn = lambda x: self.random_state.uniform(*rectangle_value)
         else:
             raise RuntimeError("unrecognized format for rectangle_value")
 
@@ -600,7 +606,6 @@ class BlankRectangleTransform:
 
 class MedianFilterTransform:
     def __init__(self,
-                 random_state,
                  filter_size: Union[int, Tuple[int, int]],
                  same_for_each_channel: bool = False,
                  p_per_sample: float = 1.,
@@ -618,7 +623,7 @@ class MedianFilterTransform:
         self.filter_size = filter_size
         self.same_for_each_channel = same_for_each_channel
         self.with_channel = with_channel
-        self.random_state = random_state
+        self.random_state = RANDOMMANAGE.get_smart_numpy_random()
 
     def __call__(self, data):
         if self.random_state.uniform() < self.p_per_sample:
@@ -632,7 +637,7 @@ class MedianFilterTransform:
                         data[c] = median_filter(data[c], filter_size)
             else:
                 for c in range(len(data)):
-                    if np.random.uniform() < self.p_per_channel:
+                    if self.random_state.uniform() < self.p_per_channel:
                         filter_size = self.filter_size if isinstance(self.filter_size, int) else self.random_state.randint(*self.filter_size)
                         data[c] = median_filter(data[c], filter_size)
         return data
@@ -671,23 +676,24 @@ class SharpeningTransform:
         self.strength = strength
         self.same_for_each_channel = same_for_each_channel
         self.with_channel = with_channel
+        self.random_state = RANDOMMANAGE.get_smart_numpy_random()
 
     def __call__(self, data):
-        if np.random.uniform() < self.p_per_sample:
+        if self.random_state.uniform() < self.p_per_sample:
             flag_2d = self._is_2d(len(data.shape))
             if self.same_for_each_channel:
                 mn, mx = data.min(), data.max()
-                strength_here = self.strength if isinstance(self.strength, float) else np.random.uniform(*self.strength)
+                strength_here = self.strength if isinstance(self.strength, float) else self.random_state.uniform(*self.strength)
                 filter_here = self._get_fileter_here(strength_here, flag_2d)
                 for c in range(data.shape[0]):
-                    if np.random.uniform() < self.p_per_channel:
+                    if self.random_state.uniform() < self.p_per_channel:
                         data[c] = convolve(data[c], filter_here, mode='same')
                         data[c] = np.clip(data[c], mn, mx)
             else:
                 for c in range(data.shape[0]):
-                    if np.random.uniform() < self.p_per_channel:
+                    if self.random_state.uniform() < self.p_per_channel:
                         mn, mx = data[c].min(), data[c].max()
-                        strength_here = self.strength if isinstance(self.strength, float) else np.random.uniform(*self.strength)
+                        strength_here = self.strength if isinstance(self.strength, float) else self.random_state.uniform(*self.strength)
                         filter_here = self._get_fileter_here(strength_here, flag_2d)
                         data[c] = convolve(data[c], filter_here, mode='same')
                         data[c] = np.clip(data[c], mn, mx)
@@ -714,8 +720,7 @@ class SharpeningTransform:
 
 # --------------------------------------- color transforms
 class ContrastAugmentationTransform:
-    def __init__(self,
-                 random_state,
+    def __init__(self, random_state,
                  contrast_range: Union[Tuple[float, float], Callable[[], float]] = (0.75, 1.25),
                  preserve_range: bool = True,
                  per_channel: bool = True,
@@ -735,6 +740,7 @@ class ContrastAugmentationTransform:
         channel
         :param p_per_sample:
         """
+        # self.random_state = RANDOMMANAGE.get_smart_numpy_random()
         self.random_state = random_state
         self.p_per_sample = p_per_sample
         self.contrast_range = contrast_range
@@ -784,9 +790,9 @@ class ContrastAugmentationTransform:
             factor = np.array([self.contrast_range() for _ in range(size)])
         else:
             if self.random_state.random() < 0.5 and self.contrast_range[0] < 1:
-                factor = np.random.uniform(self.contrast_range[0], 1, size=size)
+                factor = self.random_state.uniform(self.contrast_range[0], 1, size=size)
             else:
-                factor = np.random.uniform(max(self.contrast_range[0], 1), self.contrast_range[1], size=size)
+                factor = self.random_state.uniform(max(self.contrast_range[0], 1), self.contrast_range[1], size=size)
         return factor
 
 
@@ -800,6 +806,7 @@ class BrightnessTransform:
         each channel
         :param p_per_sample:
         """
+        # self.random_state = RANDOMMANAGE.get_smart_numpy_random()
         self.random_state = random_state
         self.p_per_sample = p_per_sample
         self.mu = mu
@@ -825,20 +832,22 @@ class BrightnessTransform:
 
 
 class BrightnessMultiplicativeTransform:
-    def __init__(self, multiplier_range=(0.5, 2), per_channel=True, p_per_sample=1., with_channel=False):
+    def __init__(self, random_state, multiplier_range=(0.5, 2), per_channel=True, p_per_sample=1., with_channel=False):
         self.p_per_sample = p_per_sample
         self.multiplier_range = multiplier_range
         self.per_channel = per_channel
         self.with_channel = with_channel
+        # self.random_state = RANDOMMANAGE.get_smart_numpy_random()
+        self.random_state = random_state
 
     def __call__(self, data):
-        if np.random.uniform() < self.p_per_sample:
+        if self.random_state.uniform() < self.p_per_sample:
             if self.with_channel and self.per_channel:
-                multiplier = np.random.uniform(self.multiplier_range[0], self.multiplier_range[1], size=len(data))
+                multiplier = self.random_state.uniform(self.multiplier_range[0], self.multiplier_range[1], size=len(data))
                 multiplier = np.expand_dims(multiplier, axis=tuple(range(1, data.ndim)))
                 data = data * multiplier
             else:
-                multiplier = np.random.uniform(self.multiplier_range[0], self.multiplier_range[1])
+                multiplier = self.random_state.uniform(self.multiplier_range[0], self.multiplier_range[1])
                 data *= multiplier
         return data
 
@@ -1196,10 +1205,7 @@ class Transformer:
     def __init__(self, opt):
         self.opt = opt
         self.preprocess = opt.preprocess
-        if getattr(opt, 'random_state', None) is not None:
-            self.random_state = opt.random_state
-        elif getattr(opt, 'seed', None) is not None:
-            self.random_state = np.random.RandomState(seed=opt.seed)
+        self.random_state = RANDOMMANAGE.get_smart_numpy_random()
 
     def standard_transform(self):
         '''
@@ -1222,9 +1228,9 @@ class Transformer:
         #                                         axes=list(combinations(np.unique(opt.rot_axes), 2)),
         #                                         p_per_sample=0.2, p_rot_per_axis=1, with_channel=False))
         trans_list.append(CenterCropTransform(opt.crop_size[::-1], with_channel=False))
-        trans_list.append(Rot90Transform(num_rot=(1, 2, 3), axes=np.unique(opt.rot_axes),
+        trans_list.append(Rot90Transform(self.random_state, num_rot=(1, 2, 3), axes=np.unique(opt.rot_axes),
                                          p_per_sample=0.5, with_channel=False))
-        trans_list.append(MirrorTransform(axes=opt.mirror_axes, p_per_sample=1, with_channel=False))
+        trans_list.append(MirrorTransform(self.random_state, axes=opt.mirror_axes, p_per_sample=1, with_channel=False))
         return ComposeForSample(trans_list)
 
     def custom_transform(self):
@@ -1252,10 +1258,10 @@ class Transformer:
         if 'randomscale' in preprocess:
             trans_list.append(RandomScaleTransform(self.random_state,
                                                    order_data=opt.order_data, order_seg=opt.order_seg,
-                                                   scale=opt.scale_range, p_scale_per_sample=0.2,
+                                                   scale=opt.scale_range, p_scale_per_sample=0.25,
                                                    p_independent_scale_per_axis=1,
                                                    independent_scale_for_each_axis=False,
-                                                   with_channel=False))
+                                                   with_channel=False))     # 0.20
         if 'randomcrop' in preprocess:
             # # crop_size = opt.crop_size
             # # x*cos(t)+y*sin(t)
@@ -1278,23 +1284,28 @@ class Transformer:
                                                             with_channel=False))
         if 'randomrotate' in preprocess:
             # [(-15, 15), (-15, 15), (-15, 15)]
-            trans_list.append(RandomRotateTransform(angle_spectrum=[(-opt.rot_angle_spectrum, opt.rot_angle_spectrum)],
+            trans_list.append(RandomRotateTransform(self.random_state,
+                                                    angle_spectrum=[(-opt.rot_angle_spectrum, opt.rot_angle_spectrum)],
                                                     axes=list(combinations(np.unique(opt.rot_axes), 2)),
-                                                    p_per_sample=0.2, p_rot_per_axis=1, with_channel=False))
+                                                    p_per_sample=0.25, p_rot_per_axis=1, with_channel=False))   # 0.20
         if 'centercrop' in preprocess:
             trans_list.append(CenterCropTransform(opt.crop_size[::-1], with_channel=False))
         if 'transposeaxes' in preprocess:
-            trans_list.append(TransposeAxesTransform(transpose_any_of_these=(0, 1, 2), p_per_sample=0.8, with_channel=False))
+            trans_list.append(TransposeAxesTransform(self.random_state,
+                                                     transpose_any_of_these=(0, 1, 2), p_per_sample=0.8, with_channel=False))
         if 'randomshift' in preprocess:
             # 暂时不用，mu和sigma作为高斯分布的参数，从该分布采样偏移值
-            trans_list.append(RandomShiftTransform(shift_mu=opt.shift_mu, shift_sigma=opt.shift_sigma,
+            trans_list.append(RandomShiftTransform(self.random_state,
+                                                   shift_mu=opt.shift_mu, shift_sigma=opt.shift_sigma,
                                                    p_per_sample=1, p_per_channel=0.5,
                                                    border_value=0, with_channel=False))
         if 'rot90' in preprocess:
-            trans_list.append(Rot90Transform(num_rot=(1, 2, 3), axes=np.unique(opt.rot_axes),
-                                             p_per_sample=0.5, with_channel=False))
+            trans_list.append(Rot90Transform(self.random_state,
+                                             num_rot=(1, 2, 3), axes=np.unique(opt.rot_axes),
+                                             p_per_sample=0.75, with_channel=False))    # 0.50
         if 'mirror' in preprocess:
-            trans_list.append(MirrorTransform(axes=opt.mirror_axes, p_per_sample=1, with_channel=False))
+            trans_list.append(MirrorTransform(self.random_state,
+                                              axes=opt.mirror_axes, p_per_sample=1, with_channel=False))
         return ComposeForSample(trans_list)
 
     def standard_transform_old(self):
@@ -1386,43 +1397,46 @@ def get_post_transform(opt):
     '''
     transform_list = []
     preprocess = opt.preprocess.split('_')
+    random_state = RANDOMMANAGE.get_smart_numpy_random()
     # 均值为0的高斯加性噪声
     if 'gaussianNoise' in preprocess:
-        transform_list.append(GaussianNoiseTransform(opt.random_state,
+        transform_list.append(GaussianNoiseTransform(random_state,
                                                      noise_variance=opt.g_noise_variance,
                                                      p_per_sample=0.15,
                                                      with_channel=False))
     # 高斯滤波
     if 'GaussianBlur' in preprocess:
-        transform_list.append(GaussianBlurTransform(opt.random_state, blur_sigma=(0.5, 1.5),
+        transform_list.append(GaussianBlurTransform(random_state, blur_sigma=(0.5, 1.5),
                                                     different_sigma_per_channel=True,
                                                     p_per_sample=0.2, p_per_channel=0.5, with_channel=False))
     # 高斯分布加性噪声
     if 'brightness' in preprocess:
-        transform_list.append(BrightnessTransform(opt.random_state,
+        transform_list.append(BrightnessTransform(random_state,
                                                   mu=opt.bright_mu, sigma=opt.bright_sigma, per_channel=True,
                                                   p_per_sample=0.15, p_per_channel=0.5,
                                                   with_channel=False))
     # 乘性噪声
     if 'BrightnessMultiplicative' in preprocess:
-        transform_list.append(BrightnessMultiplicativeTransform(multiplier_range=opt.bright_multiplier_range,
+        transform_list.append(BrightnessMultiplicativeTransform(random_state,
+                                                                multiplier_range=opt.bright_multiplier_range,
                                                                 per_channel=True, p_per_sample=0.15,
                                                                 with_channel=False))
     # 调整数据方差
     if 'contrast' in preprocess:
-        transform_list.append(ContrastAugmentationTransform(opt.random_state,
+        transform_list.append(ContrastAugmentationTransform(random_state,
                                                             contrast_range=opt.contrast_range,
                                                             preserve_range=True, per_channel=True,
                                                             p_per_sample=0.15, p_per_channel=1., with_channel=False))
     # 先下采样再上采样
     if 'simulate' in preprocess:
-        transform_list.append(SimulateLowResolutionTransform(zoom_range=opt.simulate_zoom_range, per_channel=False,
+        transform_list.append(SimulateLowResolutionTransform(random_state,
+                                                             zoom_range=opt.simulate_zoom_range, per_channel=False,
                                                              p_per_channel=0.5, p_per_sample=0.25, channels=None,
                                                              order_downsample=1, order_upsample=3,
                                                              ignore_axes=None, with_channel=False))
     # 指数变换
     if 'gammatransform' in preprocess:
-        transform_list.append(GammaTransform(opt.random_state,
+        transform_list.append(GammaTransform(random_state,
                                              gamma_range=opt.gamma_range, invert_image=False,
                                              per_channel=False, retain_stats=True, p_per_sample=0.15,
                                              with_channel=False))

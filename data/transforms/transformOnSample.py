@@ -4,6 +4,10 @@ import torch
 import random
 import numpy as np
 
+import os
+import threading
+import psutil
+
 from scipy.ndimage.interpolation import map_coordinates, zoom, rotate, shift, affine_transform
 from scipy.ndimage.filters import gaussian_filter, convolve
 from skimage.transform import resize, rescale
@@ -61,7 +65,7 @@ class ZoomTransform:
 
 
 class Rot90Transform:
-    def __init__(self, num_rot=(1, 2, 3), axes=(0, 1, 2), p_per_sample=0.3, with_channel=False):
+    def __init__(self, random_state, num_rot=(1, 2, 3), axes=(0, 1, 2), p_per_sample=0.3, with_channel=False):
         """
         :param num_rot: rotate by 90 degrees how often? must be tuple -> nom rot randomly chosen from that tuple
         :param axes: around which axes will the rotation take place? two axes are chosen randomly from axes.
@@ -69,6 +73,7 @@ class Rot90Transform:
         :param label_key:
         :param p_per_sample:
         """
+        self.random_state = random_state
         self.p_per_sample = p_per_sample
         self.axes = axes
         self.num_rot = num_rot
@@ -76,7 +81,7 @@ class Rot90Transform:
 
     def __call__(self, data, seg=None, *args, **kwargs):
 
-        if np.random.uniform() < self.p_per_sample:
+        if self.random_state.uniform() < self.p_per_sample:
             if self.with_channel:
                 data, seg = augment_rot90(data, seg, self.num_rot, self.axes)
             else:
@@ -136,7 +141,8 @@ class MirrorTransform:
 
     """
 
-    def __init__(self, axes=(0, 1, 2), p_per_sample=1, with_channel=False):
+    def __init__(self, random_state, axes=(0, 1, 2), p_per_sample=1, with_channel=False):
+        self.random_state = random_state
         self.p_per_sample = p_per_sample
         self.axes = axes
         self.with_channel = with_channel
@@ -147,8 +153,7 @@ class MirrorTransform:
 
     def __call__(self, data, seg=None, *args, **kwargs):
 
-        if np.random.uniform() < self.p_per_sample:
-
+        if self.random_state.uniform() < self.p_per_sample:
             if self.with_channel:
                 data, seg = augment_mirroring(data, seg, axes=self.axes)
             else:
@@ -400,7 +405,7 @@ class SpatialTransform_2:
 
 
 class TransposeAxesTransform:
-    def __init__(self, transpose_any_of_these=(0, 1, 2), p_per_sample=1, with_channel=False):
+    def __init__(self, random_state, transpose_any_of_these=(0, 1, 2), p_per_sample=1, with_channel=False):
         '''
         This transform will randomly shuffle the axes of transpose_any_of_these.
         Requires your patch size to have the same dimension in all axes specified in transpose_any_of_these. So if
@@ -410,6 +415,7 @@ class TransposeAxesTransform:
         :param data_key:
         :param label_key:
         '''
+        self.random_state = random_state
         self.p_per_sample = p_per_sample
         self.transpose_any_of_these = transpose_any_of_these
         self.with_channel = with_channel
@@ -424,7 +430,7 @@ class TransposeAxesTransform:
 
     def __call__(self, data, seg=None, *args, **kwargs):
 
-        if np.random.uniform() < self.p_per_sample:
+        if self.random_state.uniform() < self.p_per_sample:
             if self.with_channel:
                 data, seg = augment_transpose_axes(data, seg, self.transpose_any_of_these)
             else:
@@ -440,9 +446,10 @@ class TransposeAxesTransform:
 
 
 class RandomRotateTransform:
-    def __init__(self, angle_spectrum=((0, 360),), axes=None,
+    def __init__(self, random_state, angle_spectrum=((0, 360),), axes=None,
                  p_per_sample=1, p_rot_per_axis=0.3,
                  with_channel=False):
+        self.random_state = random_state
         self.angle_spectrum = angle_spectrum
         self.axes = axes
 
@@ -477,10 +484,10 @@ class RandomRotateTransform:
         else:
             assert len(self.angle_spectrum) == len(self.axes), "angle_spectrum have to pair to axes"
 
-        if np.random.uniform() < self.p_rot:
+        if self.random_state.uniform() < self.p_rot:
             for i_angle_spectrum, i_axes in zip(self.angle_spectrum, self.axes):
-                angle = np.random.uniform(i_angle_spectrum[0], i_angle_spectrum[1])
-                if np.random.uniform() < self.p_rot_per_axis:
+                angle = self.random_state.uniform(i_angle_spectrum[0], i_angle_spectrum[1])
+                if self.random_state.uniform() < self.p_rot_per_axis:
                     data = rotate(data, angle, axes=i_axes, reshape=True, order=3, mode='constant', cval=0.0, prefilter=True)
                     if seg is not None:
                         seg = rotate(seg, angle, axes=i_axes, reshape=True, order=0, mode='constant', cval=0.0, prefilter=False)
@@ -525,7 +532,7 @@ class ElasticDeformTransform:
             a = self.random_state.uniform(self.alpha[0], self.alpha[1])
             s = self.random_state.uniform(self.sigma[0], self.sigma[1])
 
-            offsets = [gaussian_filter((np.random.random(coords.shape[1:]) * 2 - 1), s, mode="constant", cval=0) * a
+            offsets = [gaussian_filter((self.random_state.random(coords.shape[1:]) * 2 - 1), s, mode="constant", cval=0) * a
                        for _ in range(len(coords))]
             indices = np.array(offsets) + coords
 
@@ -546,7 +553,7 @@ class ElasticDeformTransform:
 
 
 class RandomScaleTransform:
-    def __init__(self,  random_state, order_data=3, order_seg=0, scale=(0.75, 1.25),
+    def __init__(self, random_state, order_data=3, order_seg=0, scale=(0.75, 1.25),
                  p_scale_per_sample=1, p_independent_scale_per_axis=1,
                  independent_scale_for_each_axis=False, with_channel=False):
         self.random_state = random_state
@@ -569,21 +576,20 @@ class RandomScaleTransform:
             ndim = len(data.shape) - 1
         else:
             ndim = len(data.shape)
-
         if self.random_state.uniform() < self.p_scale_per_sample:
             if self.independent_scale_for_each_axis and self.random_state.uniform() < self.p_independent_scale_per_axis:
                 sc = []
                 for _ in range(ndim):
                     # 保证放大和缩小的概率各半
                     if self.random_state.random() < 0.5 and self.scale[0] < 1:
-                        sc.append(np.random.uniform(self.scale[0], 1))
+                        sc.append(self.random_state.uniform(self.scale[0], 1))
                     else:
-                        sc.append(np.random.uniform(max(self.scale[0], 1), self.scale[1]))
+                        sc.append(self.random_state.uniform(max(self.scale[0], 1), self.scale[1]))
             else:
                 if self.random_state.random() < 0.5 and self.scale[0] < 1:
-                    sc = np.random.uniform(self.scale[0], 1)
+                    sc = self.random_state.uniform(self.scale[0], 1)
                 else:
-                    sc = np.random.uniform(max(self.scale[0], 1), self.scale[1])
+                    sc = self.random_state.uniform(max(self.scale[0], 1), self.scale[1])
 
             if self.with_channel:
                 data, seg = augment_zoom(data, seg, sc, self.order_data, self.order_seg)
@@ -597,7 +603,10 @@ class RandomScaleTransform:
 
                 data = np.squeeze(data, axis=0)
                 seg = np.squeeze(seg, axis=0) if seg is not None else seg
-
+        # print('RandomScaleTransform id: ', os.getpid(),
+        #       'number of thread: ', psutil.Process(os.getpid()).num_threads(),
+        #       'sc', sc,
+        #       'random id: ', id(self.random_state))
         return data, seg
 
 
@@ -731,7 +740,7 @@ class RandomCropWithStrideTransform:
 
 
 class RandomShiftTransform:
-    def __init__(self, shift_mu, shift_sigma, p_per_sample=1, p_per_channel=0.5, border_value=0, with_channel=False):
+    def __init__(self, random_state, shift_mu, shift_sigma, p_per_sample=1, p_per_channel=0.5, border_value=0, with_channel=False):
         """
         randomly shifts the data by some amount. Equivalent to pad -> random crop but with (probably) less
         computational requirements
@@ -751,6 +760,7 @@ class RandomShiftTransform:
         :param p_per_sample:
         :param p_per_channel:
         """
+        self.random_state = random_state
         self.p_per_channel = p_per_channel
         self.p_per_sample = p_per_sample
         self.shift_sigma = shift_sigma
@@ -762,11 +772,11 @@ class RandomShiftTransform:
         #
         result_list = []
         for workon in data_list:
-            if np.random.uniform(0, 1) < self.p_per_sample:
+            if self.random_state.uniform(0, 1) < self.p_per_sample:
                 if not self.with_channel:
                     shift_here = []
                     for d in range(len(workon.shape)):
-                        shift_here.append(int(np.round(np.random.normal(
+                        shift_here.append(int(np.round(self.random_state.normal(
                             self.shift_mu[d] if isinstance(self.shift_mu, (list, tuple)) else self.shift_mu,
                             self.shift_sigma[d] if isinstance(self.shift_sigma, (list, tuple)) else self.shift_sigma,
                             size=1))))
@@ -792,10 +802,10 @@ class RandomShiftTransform:
                     workon = data_copy
 
                 for c in range(workon.shape[0]):
-                    if np.random.uniform(0, 1) < self.p_per_channel:
+                    if self.random_state.uniform(0, 1) < self.p_per_channel:
                         shift_here = []
                         for d in range(len(workon.shape) - 1):
-                            shift_here.append(int(np.round(np.random.normal(
+                            shift_here.append(int(np.round(self.random_state.normal(
                                 self.shift_mu[d] if isinstance(self.shift_mu, (list, tuple)) else self.shift_mu,
                                 self.shift_sigma[d] if isinstance(self.shift_sigma, (list, tuple)) else self.shift_sigma,
                                 size=1))))

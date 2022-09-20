@@ -15,10 +15,12 @@ from utils.forLogs import Visualizer, get_logger
 from utils.others.utils import init_seed, init_torch, print_numpy, mkdirs, DataPool, get_device_name
 from utils.others.distributed_utils import record_distribute_ddp, torch_distributed_zero_first
 from utils.others.img_io import show_array_3d, show_volume_label, show_volume_label_predict, show_image, show_paired_image
+from utils.others.random_manage import RANDOMMANAGE
+from configs.excess_config import ex_config
 
 # matplotlib.use('TKAgg')
 
-save_threshold = 0.80
+save_threshold = 0.70
 pool_size = 3
 
 
@@ -44,7 +46,7 @@ def train():
     # opt = ProjectOptions().parse(True)   # get training options
     # opt = get_opt(args=None)
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml', '--use_config'])
-    opt = get_opt(args=['--config_path=configs/defaults/mrusmr_whole_train.yaml', '--use_config',
+    opt = get_opt(args=['--config_path=configs/defaults/mrusus_whole_train.yaml', '--use_config',
                         '--use_current_local_rank'])
     # mrusmr_unet_train.yaml    regression_train.yaml   mrusus_unet_train   mrusmr_whole_train
     # opt = get_opt(args=['--config_path=configs/defaults/trus_unet3d.yaml','--use_config', '--use_current_local_rank'])
@@ -63,7 +65,7 @@ def do_train(opt):
     device_name = get_device_name()
     opt.name = opt.name + '_' + device_name if device_name is not None else opt.name
     # ====================================================配置gpu等全局变量==============================================
-    opt.random_state = np.random.RandomState(seed=opt.seed)
+    # opt.random_state = np.random.RandomState(seed=opt.seed)
 
     # setup default cuda device, 配合tensor.cuda()使用
     opt = set_local_gpu(opt)
@@ -85,7 +87,9 @@ def do_train(opt):
         opt = record_distribute_ddp(opt)
 
     on_master = (not opt.DDP) or (opt.DDP and opt.rank == 0)
-    init_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    # init_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    RANDOMMANAGE.init_global_seed(opt.seed + (opt.rank if opt.DDP else 0))
+    RANDOMMANAGE.set_base_seed(opt.seed)
 
     expr_dir = os.path.join(opt.checkpoints_dir, opt.name)  # opt.dataset_name + opt.model_name + opt.name
     opt_save_name = os.path.join(expr_dir, '{}_opt.txt'.format(opt.phase))
@@ -155,6 +159,13 @@ def do_train(opt):
     predict_pool = DataPool(pool_size, save_threshold)
 
     for epoch in range(opt.epoch_start, opt.num_epochs + 1):
+        ex_config.current_epoch = epoch
+        if opt.fixed_seed:
+            RANDOMMANAGE.set_smart_numpy_random(0)
+            RANDOMMANAGE.set_smart_python_random(0)
+        else:
+            RANDOMMANAGE.set_smart_numpy_random(epoch)
+            RANDOMMANAGE.set_smart_python_random(epoch)
         if epoch == 1 and opt.continue_train is False and opt.DDP is True:
             # 因为DDP封装时似乎会保证各进程状态相同，所以这个部分似乎可以不用，但用了也问题不大。
             ddp_logger.info('saving networks and than load!')
@@ -170,8 +181,9 @@ def do_train(opt):
 
         epoch_start_time = time.time()
 
-        if not opt.serial_batches:
-            dataloader.set_epoch(epoch)     # 更新dataloader的seed
+        # if not opt.serial_batches:
+        #     dataloader.set_epoch(epoch)     # 更新dataloader的seed
+        dataloader.set_epoch(epoch)     # 更新dataloader的seed
         model.update_learning_rate(epoch)   # 更新学习率
         model.zero_grad_optimizers()        # 清零参数梯度
 
@@ -451,7 +463,10 @@ def combine_metrics(metrics_list):
         value = 0
         try:
             for v in metrics_list:
-                value += v[key]
+                if v[key]>0:
+                    value += v[key]
+                else:
+                    value -= v[key]
         except TypeError as e:
             print('some worng of key :{} with value: {}'.format(key, metrics_list[0][key]))
             continue

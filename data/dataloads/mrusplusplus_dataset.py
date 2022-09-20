@@ -16,6 +16,7 @@ from utils.others.utils import print_numpy, clip_array, slim_array, convert_str_
 from utils.others.img_io import show_array_3d, show_volume_label, show_array_histogram, show_pired_histogram
 from utils.others.metrics import BinaryMetrics
 from data.dataloads.base_dataset import AugmentationIndex
+from scipy.ndimage.interpolation import map_coordinates, zoom
 
 
 def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
@@ -77,6 +78,38 @@ def get_data_path(dataroot, data_phase, fold=1, k_fold=5, random_seed=1008):
     return mr_paths, us_paths
 
 
+def get_scale_rate(ndim=3, scale_range=(0.7, 1.3),
+                   p_independent_scale_per_axis=1, independent_scale_for_each_axis=False):
+    if independent_scale_for_each_axis and np.random.uniform() < p_independent_scale_per_axis:
+        sc = []
+        for _ in range(ndim):
+            # 保证放大和缩小的概率各半
+            if np.random.random() < 0.5 and scale_range[0] < 1:
+                sc.append(np.random.uniform(scale_range[0], 1))
+            else:
+                sc.append(np.random.uniform(max(scale_range[0], 1), scale_range[1]))
+    else:
+        if np.random.random() < 0.5 and scale_range[0] < 1:
+            sc = np.random.uniform(scale_range[0], 1)
+        else:
+            sc = np.random.uniform(max(scale_range[0], 1), scale_range[1])
+    if not isinstance(sc, (list, tuple)):
+        sc = np.array([sc] * ndim)
+    else:
+        sc = np.array(sc)
+    return sc
+
+
+def random_scale(volume, mask, order_data=3, order_seg=1, zoom_factors=(1, 1, 1), p_scale_per_sample=0.25):
+    if np.random.uniform() < p_scale_per_sample:
+        volume_trans = zoom(volume, zoom_factors, order=order_data, mode='constant', cval=0.0, prefilter=True)
+        mask_trans = zoom(mask, zoom_factors, order=order_seg, mode='edge', cval=0, prefilter=True)
+        mask_trans = np.where(mask_trans > 0.5, 1., 0.)
+        return volume_trans, mask_trans
+
+    return volume, mask
+
+
 # 先选样本，再选扩增方式。batch内样本可重叠
 class MrusPlusPlusDataset(NIIDataset):
     def __init__(self, opt):
@@ -99,6 +132,11 @@ class MrusPlusPlusDataset(NIIDataset):
         self.true_size = min(self.us_size, self.mr_size)
 
         self.data_size = self.true_size * self.mirror_num * self.rotate_num
+
+        if 'synscale' in opt.preprocess:
+            self.fix_scale = True
+        else:
+            self.fix_scale = False
 
         self.pre_transform = get_pre_transform(opt)
         self.transform = get_transform(opt)
@@ -144,6 +182,12 @@ class MrusPlusPlusDataset(NIIDataset):
         # 进行形状变换前的对volume进行的一些特殊处理,目前为空
         mr_volume = self._apply_pre_transform(mr_volume)
         us_volume = self._apply_pre_transform(us_volume)
+        # 更新数据增强，保证每个模态的放缩比例一致
+        if self.fix_scale and np.random.uniform() < 0.25:
+            scale_all = get_scale_rate(3, (0.7, 1.3),
+                                       p_independent_scale_per_axis=1, independent_scale_for_each_axis=False)
+            mr_volume, mr_label = random_scale(mr_volume, mr_label, 3, 1, scale_all, p_scale_per_sample=1.0)
+            us_volume, us_label = random_scale(us_volume, us_label, 3, 1, scale_all, p_scale_per_sample=1.0)
         # 同时对volume和label进行的一些处理，主要包括，旋转、放缩、剪切，镜像，通道变换等
         mr_volume, mr_label = self._apply_transform(mr_volume, mr_label)
         us_volume, us_label = self._apply_transform(us_volume, us_label)
